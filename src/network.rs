@@ -30,14 +30,14 @@ impl Network {
     }
   }
 
-  pub fn listen(net: Network) {
-    let mut net = net.clone();
+  pub fn listen(net: Network) -> thread::JoinHandle<()> {
+    let net = net.clone();
 
     thread::spawn(move || {
       let mut net = net;
 
       Self::run_read_thread(&mut net);
-    });
+    })
   }
 
   pub fn run_read_thread(net: &mut Network) {

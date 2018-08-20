@@ -1,7 +1,7 @@
 cargo-features = ["edition"]
 
 [package]
-name = "rpc"
+name = "rsrpc"
 version = "0.1.0"
 authors = ["champii <contact@champii.io>"]
 edition = "2018"
