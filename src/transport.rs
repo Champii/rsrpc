@@ -1,8 +1,11 @@
 use std::net::{SocketAddr, UdpSocket};
+use std::io::{Error, ErrorKind};
+use std::sync::{ Arc, Mutex };
 
 pub struct UdpTransport {
   pub addr: SocketAddr,
   pub socket: UdpSocket,
+  pub running: Arc<Mutex<bool>>,
 }
 
 impl UdpTransport {
@@ -12,7 +15,16 @@ impl UdpTransport {
     UdpTransport {
       addr: socket.local_addr().unwrap(),
       socket: socket,
+      running: Arc::new(Mutex::new(true)),
     }
+  }
+
+  pub fn close(&mut self) {
+    let mut guard = self.running.lock().unwrap();
+
+    *guard = false;
+
+    self.socket.send_to(&[], self.addr).unwrap();
   }
 }
 
@@ -23,6 +35,7 @@ impl Clone for UdpTransport {
     UdpTransport {
       addr: self.addr.clone(),
       socket: socket2,
+      running: self.running.clone(),
     }
   }
 }
@@ -30,11 +43,8 @@ impl Clone for UdpTransport {
 unsafe impl Send for UdpTransport {}
 
 pub trait Transport {
-  fn new_udp(addr: &SocketAddr) -> UdpTransport {
-    UdpTransport::new(addr)
-  }
   fn send(&mut self, addr: &SocketAddr, data: Vec<u8>);
-  fn recv(&mut self) -> Vec<u8>;
+  fn recv(&mut self) -> Result<Vec<u8>, Error>;
 }
 
 impl Transport for UdpTransport {
@@ -42,18 +52,29 @@ impl Transport for UdpTransport {
     self.socket.send_to(buff.as_slice(), addr).unwrap();
   }
 
-  fn recv(&mut self) -> Vec<u8> {
+  fn recv(&mut self) -> Result<Vec<u8>, Error> {
     let mut buff = [0; 2048];
 
-    let toto = self.socket.recv_from(&mut buff);
+    {
+      let running = *self.running.lock().unwrap();
 
-    match toto {
+      if !running {
+        return Err(Error::new(ErrorKind::Other, "Not running"));
+      }
+    }
+
+    match self.socket.recv_from(&mut buff) {
       Ok((amount, _)) => {
-        buff[..amount].to_vec()
+        let running = *self.running.lock().unwrap();
+
+        if amount == 0 && !running {
+          Err(Error::new(ErrorKind::Other, "Read 0"))
+        } else {
+          Ok(buff[..amount].to_vec())
+        }
       }
       Err(e) => {
-        println!("ERR {:?}", e);
-        buff.to_vec()
+        Err(e)
       }
     }
   }

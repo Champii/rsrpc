@@ -1,11 +1,10 @@
 use std::thread;
 use std::net::{ SocketAddr };
+use bincode::{ serialize };
+use std::sync::{ Arc };
 
 use super::proto::Packet;
 use super::transport::*;
-use bincode::{ serialize };
-
-use std::sync::{ Arc };
 
 pub struct ServerCallback {
   pub closure: Box<Fn(Vec<u8>) -> Vec<u8>>,
@@ -42,10 +41,11 @@ impl Network {
 
   pub fn run_read_thread(net: &mut Network) {
     loop {
-      let buff = net.transport.recv();
-
-      (net.callback.closure)(buff);
-     }
+      match net.transport.recv() {
+        Ok(buff) => (net.callback.closure)(buff),
+        Err(_) => break,
+      };
+    }
   }
 
   pub fn set_callback(&mut self, callback: ServerCallback) {

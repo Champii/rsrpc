@@ -17,8 +17,9 @@ impl AsyncResponseMatcher {
   }
 
   pub fn resolve(matcher: &mut AsyncResponseMatcher, hash: String, data: Vec<u8>) {
-    let res = matcher.waiting.remove(&hash).unwrap();
-
-    res.send(data).unwrap();
+    match matcher.waiting.remove(&hash) {
+      Some(tx) => tx.send(data).unwrap(),
+      None => (),
+    };
   }
 }
