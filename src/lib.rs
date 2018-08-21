@@ -16,8 +16,9 @@ extern crate pin_utils;
 
 #[macro_use] pub mod service_macro;
 mod network;
-mod transport;
 mod async_response_matcher;
+pub mod transport;
+pub mod client;
 pub mod utils;
 pub mod server;
 pub mod proto;

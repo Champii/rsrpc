@@ -1,9 +1,6 @@
 use std::net::{SocketAddr, UdpSocket};
 use std::io::{Error, ErrorKind};
 use std::sync::{ Arc, Mutex };
-use std::thread;
-
-use super::network::ServerCallback;
 
 pub struct UdpTransport {
   pub addr: SocketAddr,
@@ -12,6 +9,7 @@ pub struct UdpTransport {
 }
 
 unsafe impl Send for UdpTransport {}
+unsafe impl Sync for UdpTransport {}
 
 impl Clone for UdpTransport {
   fn clone(&self) -> Self {
@@ -23,8 +21,16 @@ impl Clone for UdpTransport {
   }
 }
 
-impl UdpTransport {
-  pub fn new(addr: &SocketAddr) -> UdpTransport {
+pub trait Transport: Sync + Sized + Clone + Send {
+  fn new(addr: &SocketAddr) -> Self;
+  fn get_addr(&self) -> SocketAddr;
+  fn send(&mut self, addr: &SocketAddr, data: Vec<u8>);
+  fn recv(&mut self) -> Result<Vec<u8>, Error>;
+  fn close(transport: &mut Self);
+}
+
+impl Transport for UdpTransport {
+  fn new(addr: &SocketAddr) -> UdpTransport {
     let socket = UdpSocket::bind(addr).unwrap();
 
     UdpTransport {
@@ -34,43 +40,10 @@ impl UdpTransport {
     }
   }
 
-  pub fn close(&mut self) {
-    let mut guard = self.running.lock().unwrap();
-
-    *guard = false;
-
-    self.socket.send_to(&[], self.addr).unwrap();
-  }
-}
-
-
-pub trait Transport: Sized {
-  fn run(&mut self) {
-
+  fn get_addr(&self) -> SocketAddr {
+    self.addr
   }
 
-  fn listen(&self, cb: ServerCallback) -> thread::JoinHandle<()> {
-    let copy = Arc::new(self.clone());
-
-    thread::spawn(move || {
-      copy.run_read_thread(cb);
-    })
-  }
-
-  fn run_read_thread(&self, cb: ServerCallback) {
-    loop {
-      match self.recv() {
-        Ok(buff) => (cb.closure)(buff),
-        Err(_) => break,
-      };
-    }
-  }
-
-  fn send(&mut self, addr: &SocketAddr, data: Vec<u8>);
-  fn recv(&mut self) -> Result<Vec<u8>, Error>;
-}
-
-impl Transport for UdpTransport {
   fn send(&mut self, addr: &SocketAddr, buff: Vec<u8>) {
     self.socket.send_to(buff.as_slice(), addr).unwrap();
   }
@@ -101,7 +74,12 @@ impl Transport for UdpTransport {
       }
     }
   }
-}
 
-unsafe impl Send for Transport {}
-unsafe impl Sync for Transport {}
+  fn close(transport: &mut UdpTransport) {
+    let mut guard = transport.running.lock().unwrap();
+
+    *guard = false;
+
+    transport.socket.send_to(&[], transport.addr).unwrap();
+  }
+}

@@ -13,10 +13,9 @@ pub struct ServerCallback {
 unsafe impl Send for ServerCallback {}
 unsafe impl Sync for ServerCallback {}
 
-#[derive(Clone)]
 pub struct Network<T: Transport + Clone> {
   pub running: bool,
-  pub transport: Box<T>,
+  pub transport: T,
   pub callback: Arc<ServerCallback>,
 }
 
@@ -30,22 +29,41 @@ impl<T: Transport + Clone> Clone for Network<T> {
   }
 }
 
-impl<T: Transport + Clone> Network<T> {
+impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
   pub fn new(transport: T, callback: ServerCallback) -> Network<T> {
     Network {
-      transport: Box::new(transport),
+      transport: transport,
       running: true,
       callback: Arc::new(callback),
     }
   }
 
+  pub fn listen(net: Network<T>) -> thread::JoinHandle<()> {
+    let toto = net.clone();
+
+    thread::spawn(|| {
+      // let mut toto = toto.clone();
+
+      Self::run_read_thread(toto);
+    })
+  }
+
+  pub fn run_read_thread(net: Network<T>) {
+    let mut t = net.transport.clone();
+    loop {
+      match t.recv() {
+        Ok(buff) => (net.callback.closure)(buff),
+        Err(_) => break,
+      };
+    }
+  }
 
   pub fn set_callback(&mut self, callback: ServerCallback) {
     self.callback = Arc::new(callback);
   }
 
   pub fn send(&mut self, addr: &SocketAddr, buff: Vec<u8>) -> Packet {
-    let pack = Packet::new(buff, self.transport.addr, String::new());
+    let pack = Packet::new(buff, self.transport.get_addr(), String::new());
 
     let buf = serialize(&pack).unwrap();
 
@@ -55,10 +73,15 @@ impl<T: Transport + Clone> Network<T> {
   }
 
   pub fn send_answer(net: &mut Network<T>, addr: &SocketAddr, buff: Vec<u8>, response_to: String) {
-    let pack = Packet::new(buff, net.transport.addr, response_to);
+    let pack = Packet::new(buff, net.transport.get_addr(), response_to);
 
     let buf = serialize(&pack).unwrap();
 
     net.transport.send(addr, buf);
+  }
+
+  pub fn close(net: &mut Network<T>) {
+    T::close(&mut net.transport.clone());
+    // net.transport.close();
   }
 }

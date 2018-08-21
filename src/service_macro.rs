@@ -100,6 +100,8 @@ macro_rules! service {
   ) => {
     pub use $crate::proto::Packet;
     pub use $crate::server::Server;
+    pub use $crate::transport::{ Transport, UdpTransport };
+    pub use $crate::client::Client;
 
     pub fn to_socket_addr(s: &str) -> $crate::SocketAddr {
       match s.parse::<$crate::SocketAddr>() {
@@ -110,7 +112,7 @@ macro_rules! service {
       }
     }
 
-    pub trait Service {
+    pub trait RpcServer {
       $(
         fn $fn_name($($arg:$in_),*) -> $out;
       )*
@@ -140,10 +142,10 @@ macro_rules! service {
         tocall()
       }
 
-      fn listen(addr: &str) -> $crate::Server {
+      fn listen_with<T: 'static +  Transport>(addr: &str) -> $crate::Server<T> {
         trace!("Server: Listening {}", addr);
 
-        let transport = $crate::UdpTransport::new(&to_socket_addr(addr));
+        let transport = T::new(&to_socket_addr(addr));
 
         // empty ServerCallback as we need a reference to network to define it later. See Network::set_callback(...);
         let mut network = $crate::Network::new(transport, $crate::ServerCallback { closure: Box::new(|d| { d }) });
@@ -176,15 +178,14 @@ macro_rules! service {
         server
       }
 
+      fn listen(addr: &str) -> $crate::Server<$crate::UdpTransport> {
+        Self::listen_with::<UdpTransport>(addr)
+      }
+
     }
 
-    pub struct ServiceClient {
-      serv_addr: $crate::SocketAddr,
-      network: $crate::Network,
-    }
-
-    impl ServiceClient {
-      pub fn connect(addr: &str) -> ServiceClient {
+    pub trait RpcClient {
+      fn connect_with<T: 'static +  Transport>(addr: &str) -> Client<T> {
         trace!("Client: Connecting {}", addr);
 
         let mut addr = to_socket_addr(addr.clone());
@@ -193,7 +194,7 @@ macro_rules! service {
 
         addr.set_port(0);
 
-        let transport = $crate::UdpTransport::new(&addr);
+        let transport = T::new(&addr);
 
         let network = $crate::Network::new(transport, $crate::ServerCallback {
           closure: Box::new(move |data| {
@@ -211,30 +212,36 @@ macro_rules! service {
 
         $crate::Network::listen(network.clone());
 
-        ServiceClient {
+        Client {
           serv_addr,
           network,
         }
       }
 
-      pub fn close(&mut self) {
-        debug!("Client: Closing");
-
-        self.network.transport.close();
+      fn connect(addr: &str) -> Client<UdpTransport> {
+        Self::connect_with::<UdpTransport>(addr)
       }
+    }
+
+    // #[allow(dead_code)]
+    // impl<T: 'static +  Transport> ServiceClient<T> {
+    pub trait ServiceClient {
+      fn get_serv_addr(&mut self) -> $crate::SocketAddr;
+      fn send(&mut self, addr: &$crate::SocketAddr, data: Vec<u8>) -> $crate::Packet;
 
       $(
-        pub fn $fn_name(&mut self, $($arg:$in_),*) -> $out {
+        fn $fn_name(&mut self, $($arg:$in_),*) -> $out {
 
           let (tx1, rx1) = $crate::oneshot::channel::<Vec<u8>>();
 
           let req_data = ($($arg,)*);
           let req_data_bytes = $crate::bincode::serialize(&req_data).unwrap();
           let req_bytes = $crate::prepend_u64($crate::hash_ident!($fn_name) as u64, req_data_bytes);
+          let addr = self.get_serv_addr();
 
-          trace!("Client: {} < {}", &self.serv_addr, stringify!($fn_name));
+          trace!("Client: {} < {}", addr, stringify!($fn_name));
 
-          let pack = self.network.send(&self.serv_addr, req_bytes);
+          let pack = self.send(&addr, req_bytes);
 
           $crate::thread::spawn(move || {
             let mut guard = $crate::service_macro::MATCHER.lock().unwrap();
@@ -250,11 +257,21 @@ macro_rules! service {
             res = await!(rx1).unwrap();
           });
 
-          trace!("Client: {} > {}", &self.serv_addr, stringify!($fn_name));
+          trace!("Client: {} > {}", addr, stringify!($fn_name));
 
           $crate::bincode::deserialize(&res).unwrap()
         }
       )*
+    }
+
+    impl<T: 'static + Transport> ServiceClient for Client<T> {
+      fn get_serv_addr(&mut self) -> $crate::SocketAddr {
+        self.serv_addr.clone()
+      }
+
+      fn send(&mut self, addr: &$crate::SocketAddr, data: Vec<u8>) -> Packet {
+        self.network.send(addr, data)
+      }
     }
   }
 }
