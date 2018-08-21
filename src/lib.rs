@@ -15,8 +15,8 @@ extern crate tokio_core;
 extern crate pin_utils;
 
 #[macro_use] pub mod service_macro;
-mod network;
 mod async_response_matcher;
+pub mod network;
 pub mod transport;
 pub mod client;
 pub mod utils;

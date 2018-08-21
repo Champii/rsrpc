@@ -5,9 +5,22 @@ use std::sync::{ Arc };
 
 use super::proto::Packet;
 use super::transport::*;
+use super::utils::to_socket_addr;
 
 pub struct ServerCallback {
   pub closure: Box<Fn(Vec<u8>) -> Vec<u8>>,
+}
+
+impl ServerCallback {
+  pub fn new(closure: Box<Fn(Vec<u8>) -> Vec<u8>>) -> ServerCallback {
+    ServerCallback {
+      closure,
+    }
+  }
+
+  pub fn new_empty() -> ServerCallback {
+    Self::new(Box::new(|a| { a }))
+  }
 }
 
 unsafe impl Send for ServerCallback {}
@@ -30,6 +43,12 @@ impl<T: Transport + Clone> Clone for Network<T> {
 }
 
 impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
+  pub fn new_default(addr: &SocketAddr) -> Network<T> {
+    let t = T::new(addr);
+
+    Self::new(t, ServerCallback::new_empty())
+  }
+
   pub fn new(transport: T, callback: ServerCallback) -> Network<T> {
     Network {
       transport: transport,
@@ -38,18 +57,19 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
     }
   }
 
-  pub fn listen(net: Network<T>) -> thread::JoinHandle<()> {
-    let toto = net.clone();
+  pub fn async_read_loop(net: Network<T>) -> thread::JoinHandle<()> {
+    let net = net.clone();
+
+    trace!("Starting async read loop");
 
     thread::spawn(|| {
-      // let mut toto = toto.clone();
-
-      Self::run_read_thread(toto);
+      Self::run_read_thread(net);
     })
   }
 
-  pub fn run_read_thread(net: Network<T>) {
+  fn run_read_thread(net: Network<T>) {
     let mut t = net.transport.clone();
+
     loop {
       match t.recv() {
         Ok(buff) => (net.callback.closure)(buff),
@@ -82,6 +102,5 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
 
   pub fn close(net: &mut Network<T>) {
     T::close(&mut net.transport.clone());
-    // net.transport.close();
   }
 }

@@ -1,6 +1,9 @@
-use super::byteorder::{LittleEndian, ByteOrder};
+use std::net::SocketAddr;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
+use std::sync::{ Arc, Mutex };
+
+use super::byteorder::{LittleEndian, ByteOrder};
 
 pub fn prepend_u64 (num: u64, vec: Vec<u8>) -> Vec<u8> {
   let mut s_id_vec = [0u8; 8].to_vec();
@@ -29,8 +32,40 @@ pub fn hash_ident_fn(id: &str) -> usize {
   hasher.finish() as usize
 }
 
+pub fn to_socket_addr(s: &str) -> SocketAddr {
+  match s.parse::<SocketAddr>() {
+    Ok(addr) => addr,
+    Err(e) => {
+      panic!("Invalid address: {}, {}", s, e);
+    },
+  }
+}
+
 #[macro_export]
 macro_rules! hash_ident {
   ($x:ident) => ( $crate::utils::hash_ident_fn(stringify!($x)) )
 }
 
+#[derive(Clone)]
+pub struct Mutexed<T> {
+  pub mutex: Arc<Mutex<T>>,
+}
+
+impl<T: Clone> Mutexed<T> {
+  pub fn new(t: T) -> Mutexed<T> {
+    Mutexed {
+      mutex: Arc::new(Mutex::new(t)),
+    }
+  }
+  pub fn set(&mut self, t: T) {
+    let mut guard = self.mutex.lock().unwrap();
+
+    *guard = t;
+  }
+
+  pub fn get(&self) -> T {
+    let mut guard = self.mutex.lock().unwrap();
+
+    (*guard).clone()
+  }
+}

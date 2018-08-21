@@ -46,6 +46,8 @@ impl Transport for UdpTransport {
 
   fn send(&mut self, addr: &SocketAddr, buff: Vec<u8>) {
     self.socket.send_to(buff.as_slice(), addr).unwrap();
+
+    trace!("Sent {} to {}", buff.len(), addr);
   }
 
   fn recv(&mut self) -> Result<Vec<u8>, Error> {
@@ -60,10 +62,14 @@ impl Transport for UdpTransport {
     }
 
     match self.socket.recv_from(&mut buff) {
-      Ok((amount, _)) => {
+      Ok((amount, from)) => {
+        trace!("Read {} from {}", amount, from);
+
         let running = *self.running.lock().unwrap();
 
         if amount == 0 && !running {
+          trace!("Forced read 0 and not running");
+
           Err(Error::new(ErrorKind::Other, "Read 0"))
         } else {
           Ok(buff[..amount].to_vec())
