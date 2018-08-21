@@ -8,13 +8,11 @@ Largely inspired by Tarpc and Bifrost
 
 Under development
 
-Basic synchrone RPC system in UDP by default, but with multiple transport solutions.
+Basic synchronous RPC system in UDP by default, but with multiple transport solutions.
 
 ## Usage
 
 ```rust
-use std::thread;
-
 service! {
   rpc hello(name: String) -> String;
   rpc eq(s1: u8, s2: u8) -> bool;
@@ -32,21 +30,17 @@ impl Service for HelloServer {
   }
 }
 
-#[test]
-fn test() {
-  let h = thread::spawn(move || {
-    HelloServer::listen("127.0.0.1:3001");
-  });
+fn main() {
+  let mut server = HelloServer::listen("127.0.0.1:3000");
 
-  let h2 = thread::spawn(move || {
-    let mut client = ServiceClient::connect("127.0.0.1:3001");
+  let mut client = ServiceClient::connect("127.0.0.1:3000");
 
-    let res = client.hello("world".to_string()); //returns "hello world"
-    let res = client.eq(42, 43); //returns false
-  });
+  client.eq(42, 43); //  return false
+  client.hello("world".to_string()); // return "hello world"
 
-  h.join().unwrap();
-  h2.join().unwrap();
+  client.close();
+  server.close();
+
+  Server::wait_thread(server);
 }
-
 ```

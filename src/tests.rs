@@ -1,6 +1,5 @@
-mod simple_test {
-  use std::thread;
 
+mod simple_test {
   service! {
     rpc hello(name: String) -> String;
     rpc eq(s1: u8, s2: u8) -> bool;
@@ -20,6 +19,8 @@ mod simple_test {
 
   #[test]
   fn test() {
+    env_logger::init();
+
     let mut server = HelloServer::listen("127.0.0.1:3001");
 
     let mut client = ServiceClient::connect("127.0.0.1:3001");

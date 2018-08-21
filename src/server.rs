@@ -13,6 +13,8 @@ impl Server {
   }
 
   pub fn close(&mut self) {
+    debug!("Server: Closing");
+
     self.network.transport.close();
   }
 }

@@ -1,9 +1,11 @@
 #![feature(async_await, await_macro, pin, arbitrary_self_types, futures_api)]
 #[macro_use] extern crate serde_derive;
 #[macro_use] pub extern crate lazy_static;
+#[macro_use] extern crate log;
 
 pub extern crate bincode;
 pub extern crate byteorder;
+extern crate env_logger;
 extern crate serde;
 extern crate serde_bytes;
 extern crate futures;

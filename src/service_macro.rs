@@ -118,14 +118,18 @@ macro_rules! service {
       fn dispatch(pack: $crate::Packet) -> Vec<u8> {
         // let pack = Self::before_all(pack);
 
-        let (func_id, body) = $crate::extract_u64_head(pack.data);
+        let (func_id, body) = $crate::extract_u64_head(pack.data.clone());
         let mut hmap: $crate::HashMap<usize, Box<Fn() -> Vec<u8>>> = $crate::HashMap::new();
 
         $(
           hmap.insert($crate::hash_ident!($fn_name), Box::new(|| -> Vec<u8> {
             let ($($arg,)*) : ($($in_,)*) = $crate::bincode::deserialize(&body).unwrap();
 
+            trace!("Server: {} > {}", &pack.header.sender, stringify!($fn_name));
+
             let call_res = &Self::$fn_name($($arg,)*);
+
+            trace!("Server: {} < {}", &pack.header.sender, stringify!($fn_name));
 
             $crate::bincode::serialize(call_res).unwrap()
           }));
@@ -137,6 +141,8 @@ macro_rules! service {
       }
 
       fn listen(addr: &str) -> $crate::Server {
+        trace!("Server: Listening {}", addr);
+
         let transport = $crate::UdpTransport::new(&to_socket_addr(addr));
 
         // empty ServerCallback as we need a reference to network to define it later. See Network::set_callback(...);
@@ -179,6 +185,8 @@ macro_rules! service {
 
     impl ServiceClient {
       pub fn connect(addr: &str) -> ServiceClient {
+        trace!("Client: Connecting {}", addr);
+
         let mut addr = to_socket_addr(addr.clone());
 
         let serv_addr = addr.clone();
@@ -210,16 +218,21 @@ macro_rules! service {
       }
 
       pub fn close(&mut self) {
+        debug!("Client: Closing");
+
         self.network.transport.close();
       }
 
       $(
         pub fn $fn_name(&mut self, $($arg:$in_),*) -> $out {
+
           let (tx1, rx1) = $crate::oneshot::channel::<Vec<u8>>();
 
           let req_data = ($($arg,)*);
           let req_data_bytes = $crate::bincode::serialize(&req_data).unwrap();
           let req_bytes = $crate::prepend_u64($crate::hash_ident!($fn_name) as u64, req_data_bytes);
+
+          trace!("Client: {} < {}", &self.serv_addr, stringify!($fn_name));
 
           let pack = self.network.send(&self.serv_addr, req_bytes);
 
@@ -229,13 +242,15 @@ macro_rules! service {
             let matcher = &mut *guard;
 
             matcher.add(pack.header.msg_hash, tx1);
-          });
+          }).join().unwrap();
 
           let mut res = Vec::new();
 
           $crate::block_on(async {
             res = await!(rx1).unwrap();
           });
+
+          trace!("Client: {} > {}", &self.serv_addr, stringify!($fn_name));
 
           $crate::bincode::deserialize(&res).unwrap()
         }
