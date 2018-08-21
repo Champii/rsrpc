@@ -1,11 +1,26 @@
 use std::net::{SocketAddr, UdpSocket};
 use std::io::{Error, ErrorKind};
 use std::sync::{ Arc, Mutex };
+use std::thread;
+
+use super::network::ServerCallback;
 
 pub struct UdpTransport {
   pub addr: SocketAddr,
   pub socket: UdpSocket,
   pub running: Arc<Mutex<bool>>,
+}
+
+unsafe impl Send for UdpTransport {}
+
+impl Clone for UdpTransport {
+  fn clone(&self) -> Self {
+    UdpTransport {
+      addr: self.addr.clone(),
+      socket: self.socket.try_clone().unwrap(),
+      running: self.running.clone(),
+    }
+  }
 }
 
 impl UdpTransport {
@@ -28,21 +43,29 @@ impl UdpTransport {
   }
 }
 
-impl Clone for UdpTransport {
-  fn clone(&self) -> UdpTransport {
-    let socket2 = self.socket.try_clone().unwrap();
 
-    UdpTransport {
-      addr: self.addr.clone(),
-      socket: socket2,
-      running: self.running.clone(),
+pub trait Transport: Sized {
+  fn run(&mut self) {
+
+  }
+
+  fn listen(&self, cb: ServerCallback) -> thread::JoinHandle<()> {
+    let copy = Arc::new(self.clone());
+
+    thread::spawn(move || {
+      copy.run_read_thread(cb);
+    })
+  }
+
+  fn run_read_thread(&self, cb: ServerCallback) {
+    loop {
+      match self.recv() {
+        Ok(buff) => (cb.closure)(buff),
+        Err(_) => break,
+      };
     }
   }
-}
 
-unsafe impl Send for UdpTransport {}
-
-pub trait Transport {
   fn send(&mut self, addr: &SocketAddr, data: Vec<u8>);
   fn recv(&mut self) -> Result<Vec<u8>, Error>;
 }
@@ -79,3 +102,6 @@ impl Transport for UdpTransport {
     }
   }
 }
+
+unsafe impl Send for Transport {}
+unsafe impl Sync for Transport {}
