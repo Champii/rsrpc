@@ -1,7 +1,4 @@
 
-lazy_static! {
-  pub static ref MATCHER: super::Mutex<super::AsyncResponseMatcher> = super::Mutex::new(super::AsyncResponseMatcher::new());
-}
 
 // this macro expansion design took credits from tarpc by Google Inc.
 #[macro_export]
@@ -205,19 +202,19 @@ macro_rules! service {
 
         let mut network = network.clone();
 
-        network.set_callback($crate::ServerCallback {
-          closure: Box::new(move |data| {
-            let pack: $crate::Packet = $crate::deserialize(&data).unwrap();
+        // network.set_callback($crate::ServerCallback {
+        //   closure: Box::new(move |data| {
+        //     let pack: $crate::Packet = $crate::deserialize(&data).unwrap();
 
-            $crate::thread::spawn(move || {
-              let mut guard = $crate::service_macro::MATCHER.lock().unwrap();
+        //     $crate::thread::spawn(move || {
+        //       let mut guard = $crate::service_macro::MATCHER.lock().unwrap();
 
-              $crate::AsyncResponseMatcher::resolve(&mut *guard, pack.header.response_to.clone(), pack.data.clone());
-            });
+        //       $crate::AsyncResponseMatcher::resolve(&mut *guard, pack.header.response_to.clone(), pack.data.clone());
+        //     });
 
-            data
-          }),
-        });
+        //     data
+        //   }),
+        // });
 
         Client {
           serv_addr: network.transport.get_addr(),
@@ -231,11 +228,11 @@ macro_rules! service {
     // impl<T: 'static +  Transport> ServiceClient<T> {
     pub trait ServiceClient {
       fn get_serv_addr(&mut self) -> $crate::SocketAddr;
-      fn send(&mut self, addr: &$crate::SocketAddr, data: Vec<u8>) -> $crate::Packet;
+      fn send(&mut self, addr: &$crate::SocketAddr, data: Vec<u8>) -> Vec<u8>;
 
       $(
         fn $fn_name(&mut self, $($arg:$in_),*) -> $out {
-          let (tx1, rx1) = $crate::oneshot::channel::<Vec<u8>>();
+          // let (tx1, rx1) = $crate::oneshot::channel::<Vec<u8>>();
 
           let req_data = ($($arg,)*);
           let req_data_bytes = $crate::bincode::serialize(&req_data).unwrap();
@@ -244,21 +241,21 @@ macro_rules! service {
 
           debug!("Client: {} < {}", addr, stringify!($fn_name));
 
-          let pack = self.send(&addr, req_bytes);
+          let res = self.send(&addr, req_bytes);
 
-          $crate::thread::spawn(move || {
-            let mut guard = $crate::service_macro::MATCHER.lock().unwrap();
+          // $crate::thread::spawn(move || {
+          //   let mut guard = $crate::service_macro::MATCHER.lock().unwrap();
 
-            let matcher = &mut *guard;
+          //   let matcher = &mut *guard;
 
-            matcher.add(pack.header.msg_hash, tx1);
-          }).join().unwrap();
+          //   matcher.add(pack.header.msg_hash, tx1);
+          // }).join().unwrap();
 
-          let mut res = Vec::new();
+          // let mut res = Vec::new();
 
-          $crate::block_on(async {
-            res = await!(rx1).unwrap();
-          });
+          // $crate::block_on(async {
+          //   res = await!(rx1).unwrap();
+          // });
 
           debug!("Client: {} > {}", addr, stringify!($fn_name));
 
@@ -272,7 +269,7 @@ macro_rules! service {
         self.serv_addr.clone()
       }
 
-      fn send(&mut self, addr: &$crate::SocketAddr, data: Vec<u8>) -> Packet {
+      fn send(&mut self, addr: &$crate::SocketAddr, data: Vec<u8>) -> Vec<u8> {
         self.network.send(addr, data)
       }
     }
