@@ -20,7 +20,6 @@ mod async_response_matcher;
 pub mod network;
 pub mod transport;
 pub mod utils;
-pub mod server;
 pub mod proto;
 pub mod tests;
 pub mod interceptor;

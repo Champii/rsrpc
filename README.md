@@ -21,6 +21,11 @@ service! {
     fn hello(&mut self, name: String) -> String {
       format!("hello {}", name)
     }
+
+    // If no other arguments, you must keep the ',' after 'self'
+    fn ping(&mut self,) -> bool {
+      true
+    }
   }
 }
 
