@@ -7,28 +7,28 @@ use super::transport::Transport;
 use super::utils::Mutexed;
 
 #[derive(Clone)]
-pub struct Interceptor(pub Arc<Mutexed<Arc<Fn(Packet) -> Packet>>>);
+pub struct Interceptor<T>(pub Arc<Mutexed<Arc<Fn(T) -> T>>>);
 
-impl Interceptor {
-  pub fn new() -> Interceptor {
+impl<T> Interceptor<T> {
+  pub fn new() -> Interceptor<T> {
     Interceptor(Arc::new(Mutexed::new(Arc::new(|a| { a }))))
   }
 
-  pub fn set(&mut self, cb: Arc<Fn(Packet) -> Packet>) {
+  pub fn set(&mut self, cb: Arc<Fn(T) -> T>) {
     let mut guard = self.0.mutex.lock().unwrap();
 
     *guard = cb;
   }
 
-  pub fn run(&self, pack: Packet) -> Packet {
-    (self.0.get())(pack)
+  pub fn run(&self, t: T) -> T {
+    (self.0.get())(t)
   }
 }
 
 pub struct Server<T: Transport> {
   pub network: Network<T>,
   pub handle: Option<thread::JoinHandle<()>>,
-  pub interceptor: Interceptor,
+  pub interceptor: Interceptor<Packet>,
 }
 
 impl<T: 'static + Transport> Server<T> {
@@ -60,3 +60,5 @@ impl<T: 'static + Transport> Server<T> {
     self.interceptor.set(cb);
   }
 }
+
+

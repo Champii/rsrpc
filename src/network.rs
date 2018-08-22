@@ -7,13 +7,16 @@ use super::proto::Packet;
 use super::transport::*;
 use super::async_response_matcher::AsyncResponseMatcher;
 
+lazy_static! {
+  pub static ref MATCHER: super::Mutex<super::AsyncResponseMatcher> = super::Mutex::new(super::AsyncResponseMatcher::new());
+}
 
 pub struct ServerCallback {
-  pub closure: Box<Fn(Vec<u8>) -> Vec<u8>>,
+  pub closure: Box<Fn(Packet) -> Packet>,
 }
 
 impl ServerCallback {
-  pub fn new(closure: Box<Fn(Vec<u8>) -> Vec<u8>>) -> ServerCallback {
+  pub fn new(closure: Box<Fn(Packet) -> Packet>) -> ServerCallback {
     ServerCallback {
       closure,
     }
@@ -41,9 +44,6 @@ impl<T: Transport + Clone> Clone for Network<T> {
       callback: self.callback.clone(),
     }
   }
-}
-lazy_static! {
-  pub static ref MATCHER: super::Mutex<super::AsyncResponseMatcher> = super::Mutex::new(super::AsyncResponseMatcher::new());
 }
 
 impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
@@ -79,13 +79,15 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
         Ok(buff) => {
           let pack: Packet = super::deserialize(&buff).unwrap();
 
+          let pack_c = pack.clone();
+
           thread::spawn(move || {
             let mut guard = MATCHER.lock().unwrap();
 
             AsyncResponseMatcher::resolve(&mut *guard, pack.header.response_to.clone(), pack.data.clone());
           });
 
-          // (net.callback.closure)(buff);
+          (net.callback.closure)(pack_c);
         },
         Err(_) => break,
       };
@@ -101,15 +103,25 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
 
     let pack = Packet::new(buff, self.transport.get_addr(), String::new());
 
-    let mut guard = MATCHER.lock().unwrap();
+    let pack_c = pack.clone();
 
-    let matcher = &mut *guard;
+    let mut transport = self.transport.clone();
 
-    matcher.add(pack.header.msg_hash.clone(), tx1);
+    let addr_c = addr.clone();
 
-    let buf = serialize(&pack).unwrap();
+    thread::spawn(move || {
+      let addr_c = addr_c.clone();
 
-    self.transport.send(addr, buf);
+      let mut guard = MATCHER.lock().unwrap();
+
+      let matcher = &mut *guard;
+
+      matcher.add(pack.header.msg_hash.clone(), tx1);
+
+      let buf = serialize(&pack_c).unwrap();
+
+      transport.send(&addr_c, buf);
+    });
 
     let mut res = Vec::new();
 
