@@ -66,8 +66,8 @@ mod tests {
 
   #[test]
   fn explicit_provided_network() {
-    let mut net = Network::new_default(&"127.0.0.1:3003".parse::<SocketAddr>().unwrap());
-    let mut net2 = Network::<Foo::UdpTransport>::new_default(&"127.0.0.1:3004".parse::<SocketAddr>().unwrap());
+    let mut net = Network::<Foo::UdpTransport>::new_default(&super::super::to_socket_addr("127.0.0.1:3003"));
+    let mut net2 = Network::<Foo::UdpTransport>::new_default(&super::super::to_socket_addr("127.0.0.1:3004"));
 
     let server = Foo::listen_with_network(&mut net);
     let mut client = Foo::connect_with_network(&mut net2, net.transport.get_addr());
