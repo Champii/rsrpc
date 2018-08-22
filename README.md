@@ -42,7 +42,7 @@ You can chose the Transport to connect with :
 ```rust
   let server = Foo::listen_with::<UdpTransport>("127.0.0.1:3000");
 
-  let client = Foo::connect_with::<UdpTransport>("127.0.0.1:3000");
+  let client = Foo::connect_with::<UdpTransport>("127.0.0.1:3001");
 ```
 
 Actualy only UdpTransport is implemented but a TcpTransport is in the pipe.

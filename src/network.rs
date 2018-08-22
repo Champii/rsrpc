@@ -6,29 +6,11 @@ use std::sync::{ Arc };
 use super::proto::Packet;
 use super::transport::*;
 use super::async_response_matcher::AsyncResponseMatcher;
+use super::server_callback::ServerCallback;
 
 lazy_static! {
   pub static ref MATCHER: super::Mutex<super::AsyncResponseMatcher> = super::Mutex::new(super::AsyncResponseMatcher::new());
 }
-
-pub struct ServerCallback {
-  pub closure: Box<Fn(Packet) -> Packet>,
-}
-
-impl ServerCallback {
-  pub fn new(closure: Box<Fn(Packet) -> Packet>) -> ServerCallback {
-    ServerCallback {
-      closure,
-    }
-  }
-
-  pub fn new_empty() -> ServerCallback {
-    Self::new(Box::new(|a| { a }))
-  }
-}
-
-unsafe impl Send for ServerCallback {}
-unsafe impl Sync for ServerCallback {}
 
 pub struct Network<T: Transport + Clone> {
   pub running: bool,
@@ -131,16 +113,6 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
 
     res
   }
-
-  // pub fn send(&mut self, addr: &SocketAddr, buff: Vec<u8>) -> Packet {
-  //   let pack = Packet::new(buff, self.transport.get_addr(), String::new());
-
-  //   let buf = serialize(&pack).unwrap();
-
-  //   self.transport.send(addr, buf);
-
-  //   pack
-  // }
 
   pub fn send_answer(net: &mut Network<T>, addr: &SocketAddr, buff: Vec<u8>, response_to: String) {
     let pack = Packet::new(buff, net.transport.get_addr(), response_to);
