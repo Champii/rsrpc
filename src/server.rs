@@ -1,5 +1,5 @@
 use std::thread;
-use std::sync::{ Arc, Mutex };
+use std::sync::{ Arc };
 
 use super::network::Network;
 use super::proto::Packet;
@@ -40,7 +40,7 @@ impl<T: 'static + Transport> Server<T> {
     }
   }
 
-  fn wait_thread(server: Server<T>) {
+  pub fn wait_thread(server: Server<T>) {
     trace!("Server: Waiting for thread...");
 
     server.handle.unwrap().join().unwrap();

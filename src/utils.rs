@@ -64,7 +64,7 @@ impl<T: Clone> Mutexed<T> {
   }
 
   pub fn get(&self) -> T {
-    let mut guard = self.mutex.lock().unwrap();
+    let guard = self.mutex.lock().unwrap();
 
     (*guard).clone()
   }

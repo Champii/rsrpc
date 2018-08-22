@@ -1,30 +1,76 @@
 
-mod simple_test {
+mod tests {
+  #[allow(unused_imports)]
+  use std::net::SocketAddr;
+
+  #[allow(unused_imports)]
+  use std::sync::Arc;
+
+  #[allow(unused_imports)]
+  use super::super::network::Network;
+
   service! {
-    rpc hello(name: String) -> String;
-    rpc eq(s1: u8, s2: u8) -> bool;
-  }
+    Foo {
+      fn hello(name: String) -> String {
+        format!("hello {}", name)
+      }
 
-  #[allow(dead_code)]
-  pub struct Foo;
-
-  impl RpcService for Foo {
-    fn hello(name: String) -> String {
-      format!("hello {}", name)
-    }
-
-    fn eq(s1: u8, s2: u8) -> bool {
-      s1 == s2
+      fn eq(s1: u8, s2: u8) -> bool {
+        s1 == s2
+      }
     }
   }
 
   #[test]
-  fn test() {
+  fn simple_test() {
     env_logger::init();
 
-    let mut server = Service::listen("127.0.0.1:3000");
+    let server = Foo::listen("127.0.0.1:3000");
+    let mut client = Foo::connect("127.0.0.1:3000");
 
-    let mut client = Service::connect("127.0.0.1:3000");
+    assert_eq!(client.hello("moi_lol".to_string()), "hello moi_lol".to_string());
+    assert_eq!(client.eq(42, 43), false);
+
+    client.close();
+    server.close();
+  }
+
+  #[test]
+  fn interceptor() {
+    let mut server = Foo::listen("127.0.0.1:3001");
+    let mut client = Foo::connect("127.0.0.1:3001");
+
+    server.set_interceptor(Arc::new(|pack| {
+      // todo
+      pack
+    }));
+
+    assert_eq!(client.eq(42, 43), false);
+    assert_eq!(client.hello("moi_lol".to_string()), "hello moi_lol".to_string());
+
+    client.close();
+    server.close();
+  }
+
+  #[test]
+  fn explicit_transport_type() {
+    let server = Foo::listen_with::<Foo::UdpTransport>("127.0.0.1:3002");
+    let mut client = Foo::connect_with::<Foo::UdpTransport>("127.0.0.1:3002");
+
+    assert_eq!(client.eq(42, 43), false);
+    assert_eq!(client.hello("moi_lol".to_string()), "hello moi_lol".to_string());
+
+    client.close();
+    server.close();
+  }
+
+  #[test]
+  fn explicit_provided_network() {
+    let mut net = Network::new_default(&"127.0.0.1:3003".parse::<SocketAddr>().unwrap());
+    let mut net2 = Network::<Foo::UdpTransport>::new_default(&"127.0.0.1:3004".parse::<SocketAddr>().unwrap());
+
+    let server = Foo::listen_with_network(&mut net);
+    let mut client = Foo::connect_with_network(&mut net2, net.transport.get_addr());
 
     assert_eq!(client.eq(42, 43), false);
     assert_eq!(client.hello("moi_lol".to_string()), "hello moi_lol".to_string());
@@ -34,117 +80,61 @@ mod simple_test {
   }
 }
 
-// mod interceptor {
-//   service! {
-//     rpc hello(name: String) -> String;
-//     rpc eq(s1: u8, s2: u8) -> bool;
-//   }
+mod multi_service_tests {
+  #[allow(unused_imports)]
+  use std::net::SocketAddr;
 
-//  #[allow(dead_code)]
-//   pub struct Foo;
+  #[allow(unused_imports)]
+  use std::sync::Arc;
 
-//   impl RpcService for Foo {
-//     fn hello(name: String) -> String {
-//       format!("hello {}", name)
-//     }
+  #[allow(unused_imports)]
+  use super::super::network::Network;
 
-//     fn eq(s1: u8, s2: u8) -> bool {
-//       s1 == s2
-//     }
-//   }
+  service! {
+    Foo {
+      fn hello(name: String) -> String {
+        format!("hello {}", name)
+      }
 
-//   #[test]
-//   fn test() {
-//     let mut server = Service::listen("127.0.0.1:3001");
+      fn eq(s1: u8, s2: u8) -> bool {
+        s1 == s2
+      }
+    }
+    Bar {
+      fn hello(name: String) -> String {
+        format!("hello 2 {}", name)
+      }
 
-//     server.set_interceptor(Arc::new(|pack| {
-//       println!("TEST TEST {:?}", pack);
-//       pack
-//     }));
+      fn neq(s1: u8, s2: u8) -> bool {
+        s1 != s2
+      }
+    }
+  }
 
-//     let mut client = Service::connect("127.0.0.1:3001");
+  #[test]
+  fn simple_test_foo() {
+    let server = Foo::listen("127.0.0.1:3010");
+    let mut client = Foo::connect("127.0.0.1:3010");
 
-//     assert_eq!(client.eq(42, 43), false);
-//     assert_eq!(client.hello("moi_lol".to_string()), "hello moi_lol".to_string());
+    assert_eq!(client.hello("moi_lol".to_string()), "hello moi_lol".to_string());
+    assert_eq!(client.eq(42, 43), false);
 
-//     client.close();
-//     server.close();
-//   }
-// }
+    client.close();
+    server.close();
+ }
 
-// mod explicit_transport_type {
-//   service! {
-//     rpc hello(name: String) -> String;
-//     rpc eq(s1: u8, s2: u8) -> bool;
-//   }
+  #[test]
+  fn simple_test_bar() {
+    let server = Bar::listen("127.0.0.1:3011");
+    let mut client = Bar::connect("127.0.0.1:3011");
 
-//   #[allow(dead_code)]
-//   pub struct Foo;
+    assert_eq!(client.hello("moi_lol".to_string()), "hello 2 moi_lol".to_string());
+    assert_eq!(client.neq(42, 43), true);
 
-//   impl RpcService for Foo {
-//     fn hello(name: String) -> String {
-//       format!("hello {}", name)
-//     }
-
-//     fn eq(s1: u8, s2: u8) -> bool {
-//       s1 == s2
-//     }
-//   }
-
-//   #[test]
-//   fn test() {
-//     let mut server = Service::listen_with::<UdpTransport>("127.0.0.1:3002");
-
-//     let mut client = Service::connect_with::<UdpTransport>("127.0.0.1:3002");
-
-//     assert_eq!(client.eq(42, 43), false);
-//     assert_eq!(client.hello("moi_lol".to_string()), "hello moi_lol".to_string());
-
-//     client.close();
-//     server.close();
-//   }
-// }
-
-// mod explicit_provided_network {
-//   #[allow(unused_imports)]
-//   use std::net::SocketAddr;
-//   #[allow(unused_imports)]
-//   use super::super::network::Network;
-
-//   service! {
-//     rpc hello(name: String) -> String;
-//     rpc eq(s1: u8, s2: u8) -> bool;
-//   }
-
-//   #[allow(dead_code)]
-//   pub struct Foo;
-
-//   impl RpcService for Foo {
-//     fn hello(name: String) -> String {
-//       format!("hello {}", name)
-//     }
-
-//     fn eq(s1: u8, s2: u8) -> bool {
-//       s1 == s2
-//     }
-//   }
-
-//   #[test]
-//   fn test2() {
-//     let mut net = Network::<UdpTransport>::new_default(&"127.0.0.1:3003".parse::<SocketAddr>().unwrap());
-//     let mut net2 = Network::<UdpTransport>::new_default(&"127.0.0.1:3004".parse::<SocketAddr>().unwrap());
-
-//     let server = Service::listen_with_network(&mut net);
-
-//     let mut client = Service::connect_with_network(&mut net2, net.transport.get_addr());
-
-//     assert_eq!(client.eq(42, 43), false);
-//     assert_eq!(client.hello("moi_lol".to_string()), "hello moi_lol".to_string());
-
-//     server.close();
-//     client.close();
-//   }
-// }
+    client.close();
+    server.close();
+  }
+}
 
 // mod duplex {
 //   #[allow(unused_imports)]
