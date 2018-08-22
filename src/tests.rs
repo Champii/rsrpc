@@ -11,11 +11,11 @@ mod tests {
 
   service! {
     Foo {
-      fn hello(name: String) -> String {
+      fn hello(&mut self, name: String) -> String {
         format!("hello {}", name)
       }
 
-      fn eq(s1: u8, s2: u8) -> bool {
+      fn eq(&mut self, s1: u8, s2: u8) -> bool {
         s1 == s2
       }
     }
@@ -92,20 +92,20 @@ mod multi_service_tests {
 
   service! {
     Foo {
-      fn hello(name: String) -> String {
+      fn hello(&mut self, name: String) -> String {
         format!("hello {}", name)
       }
 
-      fn eq(s1: u8, s2: u8) -> bool {
+      fn eq(&mut self, s1: u8, s2: u8) -> bool {
         s1 == s2
       }
     }
     Bar {
-      fn hello(name: String) -> String {
+      fn hello(&mut self, name: String) -> String {
         format!("hello 2 {}", name)
       }
 
-      fn neq(s1: u8, s2: u8) -> bool {
+      fn neq(&mut self, s1: u8, s2: u8) -> bool {
         s1 != s2
       }
     }
@@ -130,6 +130,45 @@ mod multi_service_tests {
 
     assert_eq!(client.hello("moi_lol".to_string()), "hello 2 moi_lol".to_string());
     assert_eq!(client.neq(42, 43), true);
+
+    client.close();
+    server.close();
+  }
+}
+
+
+mod context {
+  #[allow(unused_imports)]
+  use std::net::SocketAddr;
+
+  #[allow(unused_imports)]
+  use std::sync::{ Arc, Mutex };
+
+  #[allow(unused_imports)]
+  use super::super::network::Network;
+
+  service! {
+    Foo {
+      let ctx: Arc<Mutex<u8>>;
+
+      fn inc(&mut self, n: u8) -> u8 {
+        let mut guard = self.ctx.lock().unwrap();
+
+        *guard += n;
+
+        *guard
+      }
+    }
+  }
+
+  #[test]
+  fn test() {
+    let server = Foo::listen("127.0.0.1:3020");
+    let mut client = Foo::connect("127.0.0.1:3020");
+
+    assert_eq!(client.inc(1), 1);
+    assert_eq!(client.inc(2), 3);
+    assert_eq!(client.inc(3), 6);
 
     client.close();
     server.close();

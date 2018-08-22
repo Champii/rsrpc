@@ -1,4 +1,5 @@
 #![feature(async_await, await_macro, pin, arbitrary_self_types, futures_api)]
+#![recursion_limit="128"]
 #[macro_use] extern crate serde_derive;
 #[macro_use] pub extern crate lazy_static;
 #[macro_use] extern crate log;
@@ -35,7 +36,6 @@ pub use std::thread;
 
 pub use self::proto::{Packet};
 pub use self::utils::*;
-pub use self::server::{Server};
 pub use self::network::{Network};
 pub use self::server_callback::{ServerCallback};
 pub use self::interceptor::{Interceptor};
