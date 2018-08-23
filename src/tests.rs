@@ -35,22 +35,22 @@ mod tests {
     server.close();
   }
 
-  #[test]
-  fn interceptor() {
-    let mut server = Foo::listen("127.0.0.1:3001");
-    let mut client = Foo::connect("127.0.0.1:3001");
+  // #[test]
+  // fn interceptor() {
+  //   let mut server = Foo::listen("127.0.0.1:3001");
+  //   let mut client = Foo::connect("127.0.0.1:3001");
 
-    server.set_interceptor(Arc::new(|pack| {
-      // todo
-      pack
-    }));
+  //   server.set_interceptor(Arc::new(|pack| {
+  //     // todo
+  //     pack
+  //   }));
 
-    assert_eq!(client.eq(42, 43), false);
-    assert_eq!(client.hello("moi_lol".to_string()), "hello moi_lol".to_string());
+  //   assert_eq!(client.eq(42, 43), false);
+  //   assert_eq!(client.hello("moi_lol".to_string()), "hello moi_lol".to_string());
 
-    client.close();
-    server.close();
-  }
+  //   client.close();
+  //   server.close();
+  // }
 
   #[test]
   fn explicit_transport_type() {

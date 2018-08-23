@@ -38,7 +38,7 @@ pub use self::proto::{Packet};
 pub use self::utils::*;
 pub use self::network::{Network};
 pub use self::server_callback::{ServerCallback};
-pub use self::interceptor::{Interceptor};
+// pub use self::interceptor::{Interceptor};
 pub use self::transport::*;
 pub use self::plugins::*;
 pub use self::async_response_matcher::{AsyncResponseMatcher};

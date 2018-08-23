@@ -372,7 +372,7 @@ macro_rules! service {
         pub struct Server<T: Transport> {
           pub network: $crate::Network<T>,
           pub handle: Option<$crate::thread::JoinHandle<()>>,
-          pub interceptor: $crate::Interceptor<$crate::Packet>,
+          // pub interceptor: $crate::Interceptor<$crate::Packet>,
           pub context: Arc<Mutex<$service_name>>,
         }
 
@@ -381,7 +381,7 @@ macro_rules! service {
             Server {
               network: net,
               handle: None,
-              interceptor: $crate::Interceptor::new(),
+              // interceptor: $crate::Interceptor::new(),
               context: Arc::new(Mutex::new($service_name::new())),
             }
           }
@@ -404,10 +404,10 @@ macro_rules! service {
             info!("Server: Closed");
           }
 
-          #[allow(unused)]
-          pub fn set_interceptor(&mut self, cb: Arc<Fn($crate::Packet) -> $crate::Packet>) {
-            self.interceptor.set(cb);
-          }
+          // #[allow(unused)]
+          // pub fn set_interceptor(&mut self, cb: Arc<Fn($crate::Packet) -> $crate::Packet>) {
+          //   self.interceptor.set(cb);
+          // }
         }
 
         // pub struct Duplex {
@@ -500,7 +500,7 @@ macro_rules! service {
 
           let mut server = Server::new(net.clone());
 
-          let interceptor = server.interceptor.clone();
+          // let interceptor = server.interceptor.clone();
 
           let mut context = server.context.clone();
 
@@ -509,7 +509,7 @@ macro_rules! service {
               let mut net = net_c.clone();
               let mut context = context.clone();
 
-              let pack = interceptor.run(pack);
+              // let pack = interceptor.run(pack);
 
               let mut guard = context.lock().unwrap();
 
