@@ -269,7 +269,7 @@ macro_rules! service {
         #[allow(unused)]
         #[derive(Clone)]
         pub struct $service_name {
-          $($var: $type_,)*
+          $(pub $var: $type_,)*
         }
 
         impl $service_name {
@@ -298,11 +298,11 @@ macro_rules! service {
 
                 let ($($arg,)*) : ($($in_,)*) = $crate::bincode::deserialize(&body).unwrap();
 
-                trace!("Server: {} > {}", &pack.header.sender, stringify!($fn_name));
+                debug!("Server: {} > {}", &pack.header.sender, stringify!($fn_name));
 
                 let call_res = &ctx_c.$fn_name($($arg,)*);
 
-                trace!("Server: {} < {}", &pack.header.sender, stringify!($fn_name));
+                debug!("Server: {} < {}", &pack.header.sender, stringify!($fn_name));
 
                 $crate::bincode::serialize(call_res).unwrap()
               }));
@@ -373,7 +373,7 @@ macro_rules! service {
           pub network: $crate::Network<T>,
           pub handle: Option<$crate::thread::JoinHandle<()>>,
           pub interceptor: $crate::Interceptor<$crate::Packet>,
-          pub context: $service_name,
+          pub context: Arc<Mutex<$service_name>>,
         }
 
         impl<T: 'static + Transport> Server<T> {
@@ -382,16 +382,18 @@ macro_rules! service {
               network: net,
               handle: None,
               interceptor: $crate::Interceptor::new(),
-              context: $service_name::new(),
+              context: Arc::new(Mutex::new($service_name::new())),
             }
           }
 
+          #[allow(unused)]
           pub fn wait_thread(server: Server<T>) {
             trace!("Server: Waiting for thread...");
 
             server.handle.unwrap().join().unwrap();
           }
 
+          #[allow(unused)]
           pub fn close(self) {
             debug!("Server: Closing...");
 
@@ -402,6 +404,7 @@ macro_rules! service {
             info!("Server: Closed");
           }
 
+          #[allow(unused)]
           pub fn set_interceptor(&mut self, cb: Arc<Fn($crate::Packet) -> $crate::Packet>) {
             self.interceptor.set(cb);
           }
@@ -508,7 +511,9 @@ macro_rules! service {
 
               let pack = interceptor.run(pack);
 
-              let res = $service_name::dispatch(&mut context, pack.clone());
+              let mut guard = context.lock().unwrap();
+
+              let res = $service_name::dispatch(&mut *guard, pack.clone());
 
               $crate::Network::send_answer(&mut net, &pack.header.sender, res, pack.header.msg_hash.clone());
 

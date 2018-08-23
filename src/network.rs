@@ -5,6 +5,7 @@ use std::sync::{ Arc };
 
 use super::proto::Packet;
 use super::transport::*;
+use super::plugins::*;
 use super::async_response_matcher::AsyncResponseMatcher;
 use super::server_callback::ServerCallback;
 
@@ -55,11 +56,14 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
 
   fn run_read_thread(net: Network<T>) {
     let mut t = net.transport.clone();
+    let net = net.clone();
 
     loop {
       match t.recv() {
         Ok(buff) => {
-          let pack: Packet = super::deserialize(&buff).unwrap();
+          let mut pack: Packet = super::deserialize(&buff).unwrap();
+
+          pack = PLUGINS.get().run_on_recv(pack.clone());
 
           let pack_c = pack.clone();
 
@@ -85,7 +89,7 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
 
     let pack = Packet::new(buff, self.transport.get_addr(), String::new());
 
-    let pack_c = pack.clone();
+    let mut pack_c = pack.clone();
 
     let mut transport = self.transport.clone();
 
@@ -98,7 +102,9 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
 
       let matcher = &mut *guard;
 
-      matcher.add(pack.header.msg_hash.clone(), tx1);
+      matcher.add(pack_c.header.msg_hash.clone(), tx1);
+
+      pack_c = PLUGINS.get().run_on_send(pack_c.clone());
 
       let buf = serialize(&pack_c).unwrap();
 
@@ -115,7 +121,9 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
   }
 
   pub fn send_answer(net: &mut Network<T>, addr: &SocketAddr, buff: Vec<u8>, response_to: String) {
-    let pack = Packet::new(buff, net.transport.get_addr(), response_to);
+    let mut pack = Packet::new(buff, net.transport.get_addr(), response_to);
+
+    pack = PLUGINS.get().run_on_send(pack.clone());
 
     let buf = serialize(&pack).unwrap();
 

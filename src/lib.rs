@@ -24,6 +24,7 @@ pub mod proto;
 pub mod tests;
 pub mod interceptor;
 pub mod server_callback;
+pub mod plugins;
 
 pub use std::collections::HashMap;
 pub use std::sync::{ Mutex };
@@ -39,5 +40,6 @@ pub use self::network::{Network};
 pub use self::server_callback::{ServerCallback};
 pub use self::interceptor::{Interceptor};
 pub use self::transport::*;
+pub use self::plugins::*;
 pub use self::async_response_matcher::{AsyncResponseMatcher};
 pub use self::service_macro::*;

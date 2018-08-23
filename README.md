@@ -33,8 +33,8 @@ fn main() {
   let mut server = Foo::listen("127.0.0.1:3000");
   let mut client = Foo::connect("127.0.0.1:3000");
 
-  let _ = client.eq(42, 43);                 // return false
   let _ = client.hello("world".to_string()); // return "hello world"
+  let _ = client.ping();                     // return true
 
   client.close();
   server.close();
@@ -97,8 +97,12 @@ You can declare some variables to a service in order to keep a context :
 ```rust
 service! {
   Foo {
-    let ctx: Arc<Mutex<u8>>;      // if no value, a default one is assigned
-    let hello: String = "hello".to_string();  // You must explicitly give a type
+    // You must explicitly give a type
+    let hello: String = "hello".to_string();
+
+    // if no assignation, we take `Default::default()`
+    let ctx: Arc<Mutex<u8>>;
+
 
     fn inc(&mut self, n: u8) -> u8 {
       let mut guard = self.ctx.lock().unwrap();
@@ -116,6 +120,8 @@ service! {
 
 - Error management
 - Duplex UDP socket to have a single transport for Server and Client
+- Middleware system to add modularised features at runtime
+- Futures management with a `send_async` call (`struct AsyncClient;` ?)
 - Doc
   - Interceptor
   - Server::wait_thread

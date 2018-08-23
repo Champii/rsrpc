@@ -23,7 +23,7 @@ impl AsyncResponseMatcher {
 
     match matcher.waiting.remove(&hash) {
       Some(tx) => tx.send(data).unwrap(),
-      None => warn!("Cannot find such answer ! {}", hash),
+      None => trace!("Cannot find such answer ! {}", hash),
     };
   }
 }
