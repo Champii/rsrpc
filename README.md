@@ -10,6 +10,15 @@ Under development
 
 Basic synchronous RPC system in UDP by default, but with multiple transport solutions.
 
+## Index
+
+* [Usage](#usage)
+* [Transport](#transport)
+* [Network](#network)
+* [Multi-services](#multi-services)
+* [Stateful-Context](#stateful-context)
+* [Plugins](#plugins)
+
 ## Usage
 
 By default RSRPC uses UDP as transport system. See [Transport](#transport)
@@ -103,7 +112,6 @@ service! {
     // if no assignation, we take `Default::default()`
     let ctx: Arc<Mutex<u8>>;
 
-
     fn inc(&mut self, n: u8) -> u8 {
       let mut guard = self.ctx.lock().unwrap();
 
@@ -115,14 +123,43 @@ service! {
 }
 ```
 
+## Plugins
+
+You can add some plugins at runtime to catch incoming and outgoing packets to append some logic sequentialy
+
+You have to make a struct to have the `trait Wrapper`
+
+```rust
+use rsrpc::{ Wrapper, Plugins };
+
+struct TestWrapper;
+
+impl Wrapper for TestWrapper {
+  fn on_send(&self, pack: &Packet) -> Packet {
+    /* ... */
+  }
+
+  fn on_recv(&self, pack: &Packet) -> Packet {
+    /* ... */
+  }
+}
+
+fn main() {
+  /* ... */
+
+  Plugins::add(HashWrapper);
+
+  /* ... */
+}
+```
+
 
 ## TODO
 
 - Error management
 - Duplex UDP socket to have a single transport for Server and Client
-- Middleware system to add modularised features at runtime
 - Futures management with a `send_async` call (`struct AsyncClient;` ?)
+- Remove interceptor as it can be replaced by `trait Wrapper` and `Plugins`
 - Doc
-  - Interceptor
   - Server::wait_thread
   - Client::wait_thread
