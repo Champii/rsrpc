@@ -308,7 +308,6 @@ macro_rules! service {
               }));
             )*;
 
-
             let tocall = hmap.get(&(func_id as usize)).unwrap();
 
             tocall()
@@ -347,12 +346,6 @@ macro_rules! service {
           fn send(&mut self, addr: &$crate::SocketAddr, data: Vec<u8>) -> Vec<u8> {
             self.network.send(addr, data)
           }
-          // fn send(&mut self, addr: &$crate::SocketAddr, data: Vec<u8>) -> Result<Vec<u8>, &str> {
-          //   match self.network.send(addr, data) {
-          //     Ok(r) => Ok(r),
-          //     Canceled => Err("Canceled"),
-          //   }
-          // }
 
           $(
 
@@ -367,7 +360,6 @@ macro_rules! service {
 
               let res = self.send(&addr, req_bytes);
 
-              // $crate::bincode::deserialize(&res)
               match res.len() == 0 {
                 false => {
                   debug!("Client: {} > {}", addr, stringify!($fn_name));
@@ -415,11 +407,6 @@ macro_rules! service {
 
             info!("Server: Closed");
           }
-
-          // #[allow(unused)]
-          // pub fn set_interceptor(&mut self, cb: Arc<Fn($crate::Packet) -> $crate::Packet>) {
-          //   self.interceptor.set(cb);
-          // }
         }
 
         #[allow(unused)]
@@ -432,12 +419,6 @@ macro_rules! service {
 
 
         impl Duplex {
-          // pub fn new(addr: &str) -> Duplex {
-          //   Duplex {
-          //     network: $crate::Network::new_default(&$crate::utils::to_socket_addr(addr)),
-          //   }
-          // }
-
           #[allow(unused)]
           pub fn listen(addr: &str) -> Server<UdpTransport> {
             let mut network = $crate::Network::new_default(&$crate::utils::to_socket_addr(addr));
@@ -474,7 +455,6 @@ macro_rules! service {
 
               *guard = Some(n);
             }
-
 
             net.wait();
           }
@@ -559,7 +539,6 @@ macro_rules! service {
               if pack.header.response_to.len() == 0 {
 
                 let mut net = net_c.clone();
-
 
                 let mut context = context.clone();
 

@@ -23,16 +23,6 @@ pub struct Network<T: Transport + Clone> {
   pub handle: Option<Arc<thread::JoinHandle<()>>>,
 }
 
-// impl<T: Transport + Clone> Clone for Network<T> {
-//   fn clone(&self) -> Self {
-//     Network {
-//       transport: self.transport.clone(),
-//       callback: self.callback.clone(),
-//       handle: self.handle.clone(),
-//     }
-//   }
-// }
-
 impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
   pub fn new_default(addr: &SocketAddr) -> Network<T> {
     let t = T::new(addr);
@@ -84,8 +74,7 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
 
           (net.callback.get().closure)(pack_c, from);
         },
-        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-        },
+        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => (),
         Err(e) => {
           if e.kind() != ErrorKind::Other {
             error!("Error read {}", e);
@@ -101,7 +90,6 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
     self.callback.set(callback);
   }
 
-  // pub fn send(&mut self, addr: &SocketAddr, buff: Vec<u8>) -> Result<Vec<u8>, futures::channel::oneshot::Canceled> {
   pub fn send(&mut self, addr: &SocketAddr, buff: Vec<u8>) -> Vec<u8> {
     let (tx1, rx1) = channel::<Vec<u8>>();
 

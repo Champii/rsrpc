@@ -70,8 +70,9 @@ impl Transport for UdpTransport {
 
   fn get_addr(&self) -> SocketAddr {
     // TODO: return the address from the socket instead
-    self.addr
     // self.socket.as_ref().map(|socket | socket.local_addr().unwrap()).unwrap()
+
+    self.addr
   }
 
   fn send(&mut self, addr: &SocketAddr, buff: Vec<u8>) {

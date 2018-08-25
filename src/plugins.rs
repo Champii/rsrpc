@@ -3,8 +3,8 @@ use super::proto::Packet;
 use std::fmt;
 
 pub trait Wrapper: fmt::Debug + Send + Sync {
-  fn on_send(&self, pack: &Packet) -> Packet;
-  fn on_recv(&self, pack: &Packet) -> Packet;
+  fn on_send(&self, pack: &Packet) -> Packet { pack.clone() }
+  fn on_recv(&self, pack: &Packet) -> Packet { pack.clone() }
 }
 
 lazy_static! {
