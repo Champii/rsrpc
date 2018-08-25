@@ -288,9 +288,8 @@ macro_rules! service {
           fn dispatch(ctx: &mut $service_name, pack: $crate::Packet) -> Vec<u8> {
             let (func_id, body) = $crate::extract_u64_head(pack.data.clone());
 
-            // fixme: This is dirty as hell, we redifine a HashMap each time dispatch is called !
+            // fixme: This is dirty as hell, we redefine a HashMap each time dispatch is called !
             let mut hmap: $crate::HashMap<usize, Box<Fn() -> Vec<u8>>> = $crate::HashMap::new();
-
 
             $(
               hmap.insert($crate::hash_ident!($fn_name), Box::new(|| -> Vec<u8> {
@@ -308,6 +307,7 @@ macro_rules! service {
               }));
             )*;
 
+
             let tocall = hmap.get(&(func_id as usize)).unwrap();
 
             tocall()
@@ -315,27 +315,25 @@ macro_rules! service {
         }
 
         #[allow(unused)]
+        #[derive(Clone)]
         pub struct Client<T: Transport> {
           pub serv_addr: $crate::SocketAddr,
           pub network: $crate::Network<T>,
-          pub handle: Option<$crate::thread::JoinHandle<()>>,
         }
 
         impl<T: 'static + Transport> Client<T> {
           #[allow(unused)]
-          fn wait_thread(client: Client<T>) {
-            trace!("Client: Waiting for thread...");
-
-            client.handle.unwrap().join().unwrap();
+          fn wait(&mut self) {
+            self.network.wait();
           }
 
           #[allow(unused)]
-          pub fn close(self) {
+          pub fn close(&mut self) {
             debug!("Client: Closing...");
 
-            $crate::Network::<T>::close(&mut self.network.clone());
+            self.network.close();
 
-            Self::wait_thread(self);
+            self.wait();
 
             info!("Client: Closed");
           }
@@ -348,6 +346,12 @@ macro_rules! service {
           fn send(&mut self, addr: &$crate::SocketAddr, data: Vec<u8>) -> Vec<u8> {
             self.network.send(addr, data)
           }
+          // fn send(&mut self, addr: &$crate::SocketAddr, data: Vec<u8>) -> Result<Vec<u8>, &str> {
+          //   match self.network.send(addr, data) {
+          //     Ok(r) => Ok(r),
+          //     Canceled => Err("Canceled"),
+          //   }
+          // }
 
           $(
 
@@ -362,17 +366,26 @@ macro_rules! service {
 
               let res = self.send(&addr, req_bytes);
 
-              debug!("Client: {} > {}", addr, stringify!($fn_name));
+              // $crate::bincode::deserialize(&res)
+              match res.len() == 0 {
+                false => {
+                  debug!("Client: {} > {}", addr, stringify!($fn_name));
 
-              $crate::bincode::deserialize(&res).unwrap()
+                  $crate::bincode::deserialize(&res).unwrap()
+                },
+                true => {
+                  error!("Error client send for {}", stringify!($fn_name));
+
+                  Default::default()
+                }
+              }
             }
           )*
         }
 
+        #[derive(Clone)]
         pub struct Server<T: Transport> {
           pub network: $crate::Network<T>,
-          pub handle: Option<$crate::thread::JoinHandle<()>>,
-          // pub interceptor: $crate::Interceptor<$crate::Packet>,
           pub context: Arc<Mutex<$service_name>>,
         }
 
@@ -380,26 +393,24 @@ macro_rules! service {
           pub fn new(net: $crate::Network<T>) -> Server<T> {
             Server {
               network: net,
-              handle: None,
-              // interceptor: $crate::Interceptor::new(),
               context: Arc::new(Mutex::new($service_name::new())),
             }
           }
 
           #[allow(unused)]
-          pub fn wait_thread(server: Server<T>) {
+          pub fn wait(&mut self) {
             trace!("Server: Waiting for thread...");
 
-            server.handle.unwrap().join().unwrap();
+            self.network.wait();
           }
 
           #[allow(unused)]
-          pub fn close(self) {
+          pub fn close(&mut self) {
             debug!("Server: Closing...");
 
-            $crate::Network::<T>::close(&mut self.network.clone());
+            self.network.close();
 
-            Self::wait_thread(self);
+            self.wait();
 
             info!("Server: Closed");
           }
@@ -410,25 +421,47 @@ macro_rules! service {
           // }
         }
 
-        // pub struct Duplex {
-        //   network: $crate::Network<UdpTransport>,
-        // }
+        pub struct Duplex {
+          network: $crate::Network<UdpTransport>,
+        }
 
-        // impl Duplex {
-        //   pub fn new(addr: &str) -> Duplex {
-        //     Duplex{
-        //       network: $crate::Network::new_default(&$crate::utils::to_socket_addr(addr)),
-        //     }
-        //   }
+        impl Duplex {
+          pub fn new(addr: &str) -> Duplex {
+            Duplex {
+              network: $crate::Network::new_default(&$crate::utils::to_socket_addr(addr)),
+            }
+          }
 
-        //   pub fn listen(&self, addr: &str) -> Server<UdpTransport> {
-        //     Service::listen_with_network(&mut self.network.clone())
-        //   }
+          pub fn listen(&mut self) -> Server<UdpTransport> {
+            self.network.listen();
 
-        //   pub fn connect(&self, addr: &str) -> Client<UdpTransport> {
-        //     Service::connect_with_network(&mut self.network.clone(), addr.parse::<$crate::SocketAddr>().unwrap())
-        //   }
-        // }
+            listen_with_network(self.network.clone())
+          }
+
+          pub fn connect(&mut self, addr: &str) -> Client<UdpTransport> {
+            connect_with_network(self.network.clone(), &addr.parse::<$crate::SocketAddr>().unwrap())
+          }
+
+          pub fn close(&mut self, server: Server<UdpTransport>, clients: &mut Vec<Client<UdpTransport>>) {
+            debug!("Server: Closing...");
+
+            drop(server);
+
+            for i in (0..clients.len()) {
+              let c = clients.pop();
+
+              drop(c);
+            }
+
+            self.network.close();
+
+            trace!("Server: Waiting for thread...");
+
+            self.network.wait();
+
+            info!("Server: Closed");
+          }
+        }
 
         // pub trait RpcDuplex {
         //   $(
@@ -448,31 +481,26 @@ macro_rules! service {
         }
 
         #[allow(unused)]
-        pub fn connect(addr: &str) -> Client<UdpTransport> {
-          connect_with::<UdpTransport>(addr)
+        pub fn connect(addr: &str, serv_addr: &str) -> Client<UdpTransport> {
+          connect_with::<UdpTransport>(addr, serv_addr)
         }
 
-        pub fn connect_with<T: 'static +  Transport>(addr: &str) -> Client<T> {
-          let mut addr = to_socket_addr(addr.clone());
+        pub fn connect_with<T: 'static +  Transport>(addr: &str, serv_addr: &str) -> Client<T> {
+          let mut network = $crate::Network::new_default(&to_socket_addr(addr));
 
-          let serv_addr = addr.clone();
+          network.listen();
 
-          addr.set_port(0);
-
-          let mut network = $crate::Network::new_default(&addr);
-
-          connect_with_network(&mut network, serv_addr)
+          connect_with_network(network, &to_socket_addr(serv_addr))
         }
 
-        pub fn connect_with_network<T: 'static +  Transport>(network: &mut $crate::Network<T>, serv_addr: $crate::SocketAddr) -> Client<T> {
-          info!("Client: Connecting {}", network.transport.get_addr());
+        pub fn connect_with_network<T: 'static +  Transport>(network: $crate::Network<T>, serv_addr: &$crate::SocketAddr) -> Client<T> {
+          let mut net = network;
 
-          let network = network.clone();
+          info!("Client: Listening {}", net.transport.get_addr());
 
           Client {
-            serv_addr: serv_addr,
-            network: network.clone(),
-            handle: Some($crate::Network::async_read_loop(network.clone())),
+            serv_addr: serv_addr.clone(),
+            network: net,
           }
         }
 
@@ -481,47 +509,47 @@ macro_rules! service {
           listen_with::<UdpTransport>(addr)
         }
 
-
         #[allow(unused)]
         pub fn listen_with<T: 'static +  Transport>(addr: &str) -> Server<T> {
 
           let mut network = $crate::Network::new_default(&to_socket_addr(addr));
 
-          listen_with_network(&mut network)
+          network.listen();
+
+          listen_with_network(network)
         }
 
         #[allow(unused)]
-        pub fn listen_with_network<T: 'static +  Transport>(net: &mut $crate::Network<T>) -> Server<T> {
+        pub fn listen_with_network<T: 'static +  Transport>(net: $crate::Network<T>) -> Server<T> {
           info!("Server: Listening {}", net.transport.get_addr());
+          let mut net = net;
 
-          let mut net = net.clone();
+          // net.listen();
 
           let net_c = net.clone();
 
           let mut server = Server::new(net.clone());
 
-          // let interceptor = server.interceptor.clone();
-
           let mut context = server.context.clone();
 
-          net.set_callback($crate::ServerCallback {
-            closure: Box::new(move |pack| {
-              let mut net = net_c.clone();
-              let mut context = context.clone();
+          server.network.set_callback($crate::ServerCallback {
+            closure: Arc::new(move |pack, from| {
+              if pack.header.response_to.len() == 0 {
 
-              // let pack = interceptor.run(pack);
+                let mut net = net_c.clone();
 
-              let mut guard = context.lock().unwrap();
+                let mut context = context.clone();
 
-              let res = $service_name::dispatch(&mut *guard, pack.clone());
+                let mut guard = context.lock().unwrap();
 
-              $crate::Network::send_answer(&mut net, &pack.header.sender, res, pack.header.msg_hash.clone());
+                let res = $service_name::dispatch(&mut *guard, pack.clone());
+
+                $crate::Network::send_answer(&mut net, &from, res, pack.header.msg_hash.clone());
+              }
 
               pack
             }),
           });
-
-          server.handle = Some($crate::Network::async_read_loop(net.clone()));
 
           server
         }

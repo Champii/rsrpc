@@ -26,4 +26,10 @@ impl AsyncResponseMatcher {
       None => trace!("Cannot find such answer ! {}", hash),
     };
   }
+
+  pub fn close(&mut self) {
+    for (_, tx) in &self.waiting {
+      drop(tx);
+    }
+  }
 }

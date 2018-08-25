@@ -70,8 +70,9 @@ You can chose the Network to connect with :
   let addr1 = rsrpc::to_socket_addr("127.0.0.1:3000");
   let addr2 = rsrpc::to_socket_addr("127.0.0.1:3001");
 
-  let mut net = Network::<Foo::UdpTransport>::new_default(&addr1);
-  let mut net2 = Network::<Foo::UdpTransport>::new_default(&addr2);
+  // You must call listen if you instantiate a Network by yourself
+  let mut net = Network::<Foo::UdpTransport>::new_default(&addr1).listen();
+  let mut net2 = Network::<Foo::UdpTransport>::new_default(&addr2).listen();
 
   let server = Foo::listen_with_network(&mut net);
   let client = Foo::connect_with_network(&mut net2, net.transport.get_addr());
@@ -147,7 +148,7 @@ impl Wrapper for TestWrapper {
 fn main() {
   /* ... */
 
-  Plugins::add(HashWrapper);
+  Plugins::add(TestWrapper);
 
   /* ... */
 }

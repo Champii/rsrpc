@@ -23,12 +23,11 @@ mod tests {
 
   #[test]
   fn simple_test() {
-    env_logger::init();
 
-    let server = Foo::listen("127.0.0.1:3000");
-    let mut client = Foo::connect("127.0.0.1:3000");
+    let mut server = Foo::listen("127.0.0.1:3000");
+    let mut client = Foo::connect("127.0.0.1:0", "127.0.0.1:3000");
 
-    assert_eq!(client.hello("moi_lol".to_string()), "hello moi_lol".to_string());
+    assert_eq!(client.hello("test".to_string()), "hello test".to_string());
     assert_eq!(client.eq(42, 43), false);
 
     client.close();
@@ -46,7 +45,7 @@ mod tests {
   //   }));
 
   //   assert_eq!(client.eq(42, 43), false);
-  //   assert_eq!(client.hello("moi_lol".to_string()), "hello moi_lol".to_string());
+  //   assert_eq!(client.hello("test".to_string()), "hello test".to_string());
 
   //   client.close();
   //   server.close();
@@ -54,11 +53,11 @@ mod tests {
 
   #[test]
   fn explicit_transport_type() {
-    let server = Foo::listen_with::<Foo::UdpTransport>("127.0.0.1:3002");
-    let mut client = Foo::connect_with::<Foo::UdpTransport>("127.0.0.1:3002");
+    let mut server = Foo::listen_with::<Foo::UdpTransport>("127.0.0.1:3002");
+    let mut client = Foo::connect_with::<Foo::UdpTransport>("127.0.0.1:0", "127.0.0.1:3002");
 
-    assert_eq!(client.eq(42, 43), false);
-    assert_eq!(client.hello("moi_lol".to_string()), "hello moi_lol".to_string());
+    assert_eq!(client.eq(42, 42), true);
+    assert_eq!(client.hello("test2".to_string()), "hello test2".to_string());
 
     client.close();
     server.close();
@@ -66,21 +65,26 @@ mod tests {
 
   #[test]
   fn explicit_provided_network() {
-    let mut net = Network::<Foo::UdpTransport>::new_default(&super::super::to_socket_addr("127.0.0.1:3003"));
+    let mut net1 = Network::<Foo::UdpTransport>::new_default(&super::super::to_socket_addr("127.0.0.1:3003"));
     let mut net2 = Network::<Foo::UdpTransport>::new_default(&super::super::to_socket_addr("127.0.0.1:3004"));
 
-    let server = Foo::listen_with_network(&mut net);
-    let mut client = Foo::connect_with_network(&mut net2, net.transport.get_addr());
+    net1.listen();
+    net2.listen();
+
+    let addr = net1.transport.get_addr();
+
+    let mut server = Foo::listen_with_network(net1);
+    let mut client = Foo::connect_with_network(net2, &addr);
 
     assert_eq!(client.eq(42, 43), false);
-    assert_eq!(client.hello("moi_lol".to_string()), "hello moi_lol".to_string());
+    assert_eq!(client.hello("test3".to_string()), "hello test3".to_string());
 
     client.close();
     server.close();
   }
 }
 
-mod multi_service_tests {
+mod multi_service {
   #[allow(unused_imports)]
   use std::net::SocketAddr;
 
@@ -100,12 +104,13 @@ mod multi_service_tests {
         s1 == s2
       }
     }
+    // TODO: Beware of name collision !
     Bar {
-      fn hello(&mut self, name: String) -> String {
+      fn hello2(&mut self, name: String) -> String {
         format!("hello 2 {}", name)
       }
 
-      fn neq(&mut self, s1: u8, s2: u8) -> bool {
+      fn neq2(&mut self, s1: u8, s2: u8) -> bool {
         s1 != s2
       }
     }
@@ -113,10 +118,10 @@ mod multi_service_tests {
 
   #[test]
   fn simple_test_foo() {
-    let server = Foo::listen("127.0.0.1:3010");
-    let mut client = Foo::connect("127.0.0.1:3010");
+    let mut server = Foo::listen("127.0.0.1:3010");
+    let mut client = Foo::connect("127.0.0.1:0", "127.0.0.1:3010");
 
-    assert_eq!(client.hello("moi_lol".to_string()), "hello moi_lol".to_string());
+    assert_eq!(client.hello("test4".to_string()), "hello test4".to_string());
     assert_eq!(client.eq(42, 43), false);
 
     client.close();
@@ -125,11 +130,11 @@ mod multi_service_tests {
 
   #[test]
   fn simple_test_bar() {
-    let server = Bar::listen("127.0.0.1:3011");
-    let mut client = Bar::connect("127.0.0.1:3011");
+    let mut server = Bar::listen("127.0.0.1:3011");
+    let mut client = Bar::connect("127.0.0.1:0", "127.0.0.1:3011");
 
-    assert_eq!(client.hello("moi_lol".to_string()), "hello 2 moi_lol".to_string());
-    assert_eq!(client.neq(42, 43), true);
+    assert_eq!(client.hello2("test5".to_string()), "hello 2 test5".to_string());
+    assert_eq!(client.neq2(42, 43), true);
 
     client.close();
     server.close();
@@ -163,8 +168,8 @@ mod context {
 
   #[test]
   fn test() {
-    let server = Foo::listen("127.0.0.1:3020");
-    let mut client = Foo::connect("127.0.0.1:3020");
+    let mut server = Foo::listen("127.0.0.1:3020");
+    let mut client = Foo::connect("127.0.0.1:0", "127.0.0.1:3020");
 
     assert_eq!(client.inc(1), 1);
     assert_eq!(client.inc(2), 3);
@@ -175,41 +180,31 @@ mod context {
   }
 }
 
-// mod duplex {
-//   #[allow(unused_imports)]
-//   use std::net::SocketAddr;
-//   #[allow(unused_imports)]
-//   use super::super::network::Network;
+mod duplex {
+  #[allow(unused_imports)]
+  use std::net::SocketAddr;
+  #[allow(unused_imports)]
+  use super::super::network::Network;
 
-//   service! {
-//     rpc hello(name: String) -> String;
-//     rpc eq(s1: u8, s2: u8) -> bool;
-//   }
+  service! {
+    Foo {
+      fn hello(&mut self, name: String) -> String {
+        format!("hello {}", name)
+      }
+    }
+  }
 
-//   #[allow(dead_code)]
-//   pub struct HelloDuplex;
+  #[test]
+  fn test_duplex() {
+    env_logger::init();
 
-//   impl RpcDuplex for HelloDuplex {
-//     fn hello(name: String) -> String {
-//       format!("hello {}", name)
-//     }
+    let mut duplex = Foo::Duplex::new("127.0.0.1:3030");
 
-//     fn eq(s1: u8, s2: u8) -> bool {
-//       s1 == s2
-//     }
-//   }
+    let mut server = duplex.listen();
+    let mut client = duplex.connect("127.0.0.1:3030");
 
-//   #[test]
-//   fn test() {
-//     let duplex = HelloDuplex::new();
+    assert_eq!(client.hello("test".to_string()), "hello test".to_string());
 
-//     let server = duplex.listen("127.0.0.1:3000");
-//     let client = duplex.connect("127.0.0.1:3000");
-
-//     assert_eq!(client.eq(42, 43), false);
-//     assert_eq!(client.hello("moi_lol".to_string()), "hello moi_lol".to_string());
-
-//     client.close();
-//     server.close();
-//   }
-// }
+    duplex.close(server, &mut vec![client]);
+  }
+}

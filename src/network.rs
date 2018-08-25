@@ -1,33 +1,37 @@
 use std::thread;
 use std::net::{ SocketAddr };
 use bincode::{ serialize };
-use std::sync::{ Arc };
+use std::sync::{ Arc, Mutex };
+use std::io::{Error, ErrorKind};
 
 use super::proto::Packet;
 use super::transport::*;
 use super::plugins::*;
+use super::utils::*;
 use super::async_response_matcher::AsyncResponseMatcher;
 use super::server_callback::ServerCallback;
+use super::oneshot::channel;
 
 lazy_static! {
   pub static ref MATCHER: super::Mutex<super::AsyncResponseMatcher> = super::Mutex::new(super::AsyncResponseMatcher::new());
 }
 
+#[derive(Clone)]
 pub struct Network<T: Transport + Clone> {
-  pub running: bool,
   pub transport: T,
-  pub callback: Arc<ServerCallback>,
+  pub callback: Mutexed<ServerCallback>,
+  pub handle: Option<Arc<thread::JoinHandle<()>>>,
 }
 
-impl<T: Transport + Clone> Clone for Network<T> {
-  fn clone(&self) -> Self {
-    Network {
-      running: self.running.clone(),
-      transport: self.transport.clone(),
-      callback: self.callback.clone(),
-    }
-  }
-}
+// impl<T: Transport + Clone> Clone for Network<T> {
+//   fn clone(&self) -> Self {
+//     Network {
+//       transport: self.transport.clone(),
+//       callback: self.callback.clone(),
+//       handle: self.handle.clone(),
+//     }
+//   }
+// }
 
 impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
   pub fn new_default(addr: &SocketAddr) -> Network<T> {
@@ -39,28 +43,33 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
   pub fn new(transport: T, callback: ServerCallback) -> Network<T> {
     Network {
       transport: transport,
-      running: true,
-      callback: Arc::new(callback),
+      callback: Mutexed::new(callback),
+      handle: None,
     }
   }
 
-  pub fn async_read_loop(net: Network<T>) -> thread::JoinHandle<()> {
-    let net = net.clone();
+  pub fn listen(&mut self) -> &mut Network<T> {
+    self.transport.listen();
+
+    let net = self.clone();
 
     trace!("Starting async read loop");
 
-    thread::spawn(|| {
+    self.handle = Some(Arc::new(thread::spawn(|| {
       Self::run_read_thread(net);
-    })
+    })));
+
+    self
   }
 
   fn run_read_thread(net: Network<T>) {
     let mut t = net.transport.clone();
     let net = net.clone();
 
+
     loop {
       match t.recv() {
-        Ok(buff) => {
+        Ok((buff, from)) => {
           let mut pack: Packet = super::deserialize(&buff).unwrap();
 
           pack = PLUGINS.get().run_on_recv(pack.clone());
@@ -73,19 +82,26 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
             AsyncResponseMatcher::resolve(&mut *guard, pack.header.response_to.clone(), pack.data.clone());
           });
 
-          (net.callback.closure)(pack_c);
+          (net.callback.get().closure)(pack_c, from);
         },
-        Err(_) => break,
+        Err(e) => {
+          if e.kind() != ErrorKind::Other {
+            error!("Error read {}", e);
+          }
+
+          break;
+        }
       };
     }
   }
 
   pub fn set_callback(&mut self, callback: ServerCallback) {
-    self.callback = Arc::new(callback);
+    self.callback.set(callback);
   }
 
+  // pub fn send(&mut self, addr: &SocketAddr, buff: Vec<u8>) -> Result<Vec<u8>, futures::channel::oneshot::Canceled> {
   pub fn send(&mut self, addr: &SocketAddr, buff: Vec<u8>) -> Vec<u8> {
-    let (tx1, rx1) = super::oneshot::channel::<Vec<u8>>();
+    let (tx1, rx1) = channel::<Vec<u8>>();
 
     let pack = Packet::new(buff, self.transport.get_addr(), String::new());
 
@@ -114,7 +130,10 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
     let mut res = Vec::new();
 
     super::block_on(async {
-      res = await!(rx1).unwrap();
+      match await!(rx1) {
+        Ok(r) => res = r,
+        Canceled => warn!("Canceled call"),
+      };
     });
 
     res
@@ -130,7 +149,19 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
     net.transport.send(addr, buf);
   }
 
-  pub fn close(net: &mut Network<T>) {
-    T::close(&mut net.transport.clone());
+  pub fn wait(&mut self) {
+    if let Some(handle) = self.handle.take() {
+      let h = Arc::try_unwrap(handle).unwrap();
+
+      h.join().unwrap();
+    }
+  }
+
+  pub fn close(&mut self) {
+    self.transport.close();
+
+    self.set_callback(ServerCallback::new_empty());
+
+    MATCHER.lock().unwrap().close();
   }
 }
