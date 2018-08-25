@@ -157,6 +157,7 @@ fn main() {
 
 ## TODO
 
+- Move back AsyncResponseMatcher into Client instead of Network
 - Error management
 - Duplex UDP socket to have a single transport for Server and Client
 - Futures management with a `send_async` call (`struct AsyncClient;` ?)

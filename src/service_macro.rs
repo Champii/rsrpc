@@ -265,6 +265,7 @@ macro_rules! service {
         pub use $crate::transport::{ Transport, UdpTransport };
         use $crate::utils::to_socket_addr;
         use std::sync::{ Arc, Mutex };
+        use lazy_static::*;
 
         #[allow(unused)]
         #[derive(Clone)]
@@ -421,58 +422,82 @@ macro_rules! service {
           // }
         }
 
+        #[allow(unused)]
         pub struct Duplex {
-          network: $crate::Network<UdpTransport>,
         }
 
+        lazy_static! {
+          pub static ref DUPLEX: Arc<Mutex<Option<$crate::Network<UdpTransport>>>> = Arc::new(Mutex::new(None));
+        }
+
+
         impl Duplex {
-          pub fn new(addr: &str) -> Duplex {
-            Duplex {
-              network: $crate::Network::new_default(&$crate::utils::to_socket_addr(addr)),
+          // pub fn new(addr: &str) -> Duplex {
+          //   Duplex {
+          //     network: $crate::Network::new_default(&$crate::utils::to_socket_addr(addr)),
+          //   }
+          // }
+
+          #[allow(unused)]
+          pub fn listen(addr: &str) -> Server<UdpTransport> {
+            let mut network = $crate::Network::new_default(&$crate::utils::to_socket_addr(addr));
+
+            network.listen();
+
+            let mut guard = DUPLEX.lock().unwrap();
+
+            *guard = Some(network.clone());
+
+            listen_with_network(network)
+          }
+
+          #[allow(unused)]
+          pub fn connect(addr: &str) -> Client<UdpTransport> {
+            let net = DUPLEX.lock().unwrap().as_ref().unwrap().clone();
+
+            connect_with_network(net, &addr.parse::<$crate::SocketAddr>().unwrap())
+          }
+
+          #[allow(unused)]
+          pub fn wait() {
+            trace!("Server: Waiting for thread...");
+
+            let mut net;
+
+            {
+              let mut guard = DUPLEX.lock().unwrap();
+              let mut n = (*guard).take().unwrap();
+
+              net = n.clone();
+
+              n.handle = None;
+
+              *guard = Some(n);
             }
+
+
+            net.wait();
           }
 
-          pub fn listen(&mut self) -> Server<UdpTransport> {
-            self.network.listen();
-
-            listen_with_network(self.network.clone())
-          }
-
-          pub fn connect(&mut self, addr: &str) -> Client<UdpTransport> {
-            connect_with_network(self.network.clone(), &addr.parse::<$crate::SocketAddr>().unwrap())
-          }
-
-          pub fn close(&mut self, server: Server<UdpTransport>, clients: &mut Vec<Client<UdpTransport>>) {
+          #[allow(unused)]
+          pub fn close() {
             debug!("Server: Closing...");
 
-            drop(server);
-
-            for i in (0..clients.len()) {
-              let c = clients.pop();
-
-              drop(c);
+            let mut net;
+            {
+              let mut guard = DUPLEX.lock().unwrap();
+              net = (*guard).take().unwrap().clone();
             }
 
-            self.network.close();
+            net.close();
 
             trace!("Server: Waiting for thread...");
 
-            self.network.wait();
+            net.wait();
 
             info!("Server: Closed");
           }
         }
-
-        // pub trait RpcDuplex {
-        //   $(
-        //     fn $fn_name($($arg:$in_),*) -> $($out)*;
-        //   )*
-
-        //   // fn new() -> Duplex {
-        //     // Duplex::new()
-        //   // }
-
-        // }
 
         impl ServiceTrait for $service_name {
           $(
@@ -494,13 +519,11 @@ macro_rules! service {
         }
 
         pub fn connect_with_network<T: 'static +  Transport>(network: $crate::Network<T>, serv_addr: &$crate::SocketAddr) -> Client<T> {
-          let mut net = network;
-
-          info!("Client: Listening {}", net.transport.get_addr());
+          info!("Client: Listening {}", network.transport.get_addr());
 
           Client {
             serv_addr: serv_addr.clone(),
-            network: net,
+            network,
           }
         }
 
@@ -522,21 +545,21 @@ macro_rules! service {
         #[allow(unused)]
         pub fn listen_with_network<T: 'static +  Transport>(net: $crate::Network<T>) -> Server<T> {
           info!("Server: Listening {}", net.transport.get_addr());
-          let mut net = net;
+          let mut net_c = net.clone();
 
-          // net.listen();
+          net_c.handle = None;
 
-          let net_c = net.clone();
-
-          let mut server = Server::new(net.clone());
+          let mut server = Server::new(net_c.clone());
 
           let mut context = server.context.clone();
 
           server.network.set_callback($crate::ServerCallback {
             closure: Arc::new(move |pack, from| {
+
               if pack.header.response_to.len() == 0 {
 
                 let mut net = net_c.clone();
+
 
                 let mut context = context.clone();
 

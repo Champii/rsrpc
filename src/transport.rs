@@ -19,7 +19,7 @@ impl UdpTransport {
   }
 
   fn get_running(&mut self) -> bool {
-    let mut guard = self.running.lock().unwrap();
+    let guard = self.running.lock().unwrap();
 
     (*guard).clone()
   }
@@ -100,9 +100,6 @@ impl Transport for UdpTransport {
         } else {
           Ok((buff[..amount].to_vec(), from))
         }
-      }
-      Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-        self.recv()
       }
       Err(e) => {
         Err(e)

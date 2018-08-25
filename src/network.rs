@@ -1,8 +1,8 @@
 use std::thread;
 use std::net::{ SocketAddr };
 use bincode::{ serialize };
-use std::sync::{ Arc, Mutex };
-use std::io::{Error, ErrorKind};
+use std::sync::{ Arc };
+use std::io::{ ErrorKind };
 
 use super::proto::Packet;
 use super::transport::*;
@@ -84,6 +84,8 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
 
           (net.callback.get().closure)(pack_c, from);
         },
+        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+        },
         Err(e) => {
           if e.kind() != ErrorKind::Other {
             error!("Error read {}", e);
@@ -132,7 +134,7 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
     super::block_on(async {
       match await!(rx1) {
         Ok(r) => res = r,
-        Canceled => warn!("Canceled call"),
+        _ => warn!("Canceled call"),
       };
     });
 
@@ -151,9 +153,10 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
 
   pub fn wait(&mut self) {
     if let Some(handle) = self.handle.take() {
-      let h = Arc::try_unwrap(handle).unwrap();
-
-      h.join().unwrap();
+      match Arc::try_unwrap(handle) {
+        Ok(h) => h.join().unwrap(),
+        Err(a) => warn!("Not waiting: multiple references ({}) to network stay.", Arc::strong_count(&a)),
+      };
     }
   }
 

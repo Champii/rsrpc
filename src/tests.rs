@@ -198,13 +198,13 @@ mod duplex {
   fn test_duplex() {
     env_logger::init();
 
-    let mut duplex = Foo::Duplex::new("127.0.0.1:3030");
-
-    let mut server = duplex.listen();
-    let mut client = duplex.connect("127.0.0.1:3030");
+    let server = Foo::Duplex::listen("127.0.0.1:3030");
+    let mut client = Foo::Duplex::connect("127.0.0.1:3030");
 
     assert_eq!(client.hello("test".to_string()), "hello test".to_string());
 
-    duplex.close(server, &mut vec![client]);
+    drop(server);
+    drop(client);
+    Foo::Duplex::close();
   }
 }
