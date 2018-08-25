@@ -150,7 +150,7 @@ You can declare some variables to a service in order to keep a context :
 service! {
   Foo {
     // You must explicitly give a type
-    let hello: String = "hello".to_string();
+    let hello: String = "hello !".to_string();
 
     // if no assignation, we take `Default::default()`
     let i: Arc<Mutex<u8>>;
@@ -171,7 +171,7 @@ fn main() {
   let server = Foo::listen("127.0.0.1:3000");
 
   // This context is an `Arc<Mutex<T>>`
-  println!("Counter value: {}", server.context.lock().unwrap().i);
+  println!("Say hello: {}", server.context.lock().unwrap().hello);
 }
 ```
 
