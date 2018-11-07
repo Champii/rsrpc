@@ -1,8 +1,5 @@
 use futures::channel::oneshot;
 use std::collections::HashMap;
-use std::time::Duration;
-
-use super::timer::Timer;
 
 pub struct AsyncResponseMatcher {
   waiting: HashMap<String, oneshot::Sender<Vec<u8>>>,

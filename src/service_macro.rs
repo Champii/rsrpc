@@ -482,6 +482,7 @@ macro_rules! service {
             debug!("Server: Closed");
           }
 
+          #[allow(dead_code)]
           pub fn add_plugin<T: Wrapper + Clone + 'static>(plugin: T) {
             let mut guard = DUPLEX.lock().unwrap();
 

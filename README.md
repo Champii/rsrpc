@@ -186,7 +186,7 @@ Each plugin is called in the order of declaration for `on_send()`, and in the re
 You have to make a struct to implement the `Wrapper` trait
 
 ```rust
-use rsrpc::{ Wrapper, Plugins };
+use rsrpc::Wrapper;
 
 // You can keep a context here
 struct TestWrapper;
@@ -206,7 +206,9 @@ impl Wrapper for TestWrapper {
 fn main() {
   /* ... */
 
-  Plugins::add(TestWrapper);
+  let mut server = Foo::listen(&addr);
+
+  server.network.plugins.add(TestWrapper);
 
   /* ... */
 }
