@@ -6,7 +6,7 @@
 
 Largely inspired by Tarpc and Bifrost
 
-Under development
+Under development and currently not stable.
 
 Basic synchronous RPC system in UDP by default, but with multiple transport solutions.
 

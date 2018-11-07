@@ -263,19 +263,23 @@ macro_rules! service {
       #[allow(non_snake_case)]
       pub mod $service_name {
         pub use $crate::transport::{ Transport, UdpTransport };
-        use $crate::utils::to_socket_addr;
+        use $crate::utils::{to_socket_addr};
         use std::sync::{ Arc, Mutex };
+        use std::net::SocketAddr;
         use lazy_static::*;
+        use $crate::plugins::Wrapper;
 
         #[allow(unused)]
         #[derive(Clone)]
         pub struct $service_name {
+          pub actual_sender: SocketAddr,
           $(pub $var: $type_,)*
         }
 
         impl $service_name {
           pub fn new() -> $service_name {
             $service_name {
+              actual_sender: SocketAddr::new("127.0.0.1".parse().unwrap(), 0),
               $($var: $default,)*
             }
           }
@@ -299,6 +303,8 @@ macro_rules! service {
                 let ($($arg,)*) : ($($in_,)*) = $crate::bincode::deserialize(&body).unwrap();
 
                 debug!("Server: {} > {}", &pack.header.sender, stringify!($fn_name));
+
+                ctx_c.actual_sender = pack.header.sender;
 
                 let call_res = &ctx_c.$fn_name($($arg,)*);
 
@@ -329,13 +335,13 @@ macro_rules! service {
 
           #[allow(unused)]
           pub fn close(&mut self) {
-            debug!("Client: Closing...");
+            trace!("Client: Closing...");
 
             self.network.close();
 
             self.wait();
 
-            info!("Client: Closed");
+            debug!("Client: Closed");
           }
           #[allow(unused)]
           fn get_serv_addr(&mut self) -> $crate::SocketAddr {
@@ -343,14 +349,14 @@ macro_rules! service {
           }
 
           #[allow(unused)]
-          fn send(&mut self, addr: &$crate::SocketAddr, data: Vec<u8>) -> Vec<u8> {
+          fn send(&mut self, addr: &$crate::SocketAddr, data: Vec<u8>) -> Result<Vec<u8>, String> {
             self.network.send(addr, data)
           }
 
           $(
 
             #[allow(unused)]
-            pub fn $fn_name(&mut self, $($arg:$in_),*) -> $out {
+            pub fn $fn_name(&mut self, $($arg:$in_),*) -> Result<Result<$out, $error>, String> {
               let req_data = ($($arg,)*);
               let req_data_bytes = $crate::bincode::serialize(&req_data).unwrap();
               let req_bytes = $crate::prepend_u64($crate::hash_ident!($fn_name) as u64, req_data_bytes);
@@ -360,18 +366,16 @@ macro_rules! service {
 
               let res = self.send(&addr, req_bytes);
 
-              match res.len() == 0 {
-                false => {
-                  debug!("Client: {} > {}", addr, stringify!($fn_name));
+              res.map(|data| {
+                debug!("Client: {} > {}", addr, stringify!($fn_name));
 
-                  $crate::bincode::deserialize(&res).unwrap()
-                },
-                true => {
-                  error!("Error client send for {}", stringify!($fn_name));
+                Ok($crate::bincode::deserialize(&data).unwrap())
+              }).map_err(|err| {
+                error!("Error client send for {}", stringify!($fn_name));
 
-                  Default::default()
-                }
-              }
+                Default::default()
+              })
+
             }
           )*
         }
@@ -399,13 +403,13 @@ macro_rules! service {
 
           #[allow(unused)]
           pub fn close(&mut self) {
-            debug!("Server: Closing...");
+            trace!("Server: Closing...");
 
             self.network.close();
 
             self.wait();
 
-            info!("Server: Closed");
+            debug!("Server: Closed");
           }
         }
 
@@ -461,7 +465,7 @@ macro_rules! service {
 
           #[allow(unused)]
           pub fn close() {
-            debug!("Server: Closing...");
+            trace!("Server: Closing...");
 
             let mut net;
             {
@@ -475,7 +479,15 @@ macro_rules! service {
 
             net.wait();
 
-            info!("Server: Closed");
+            debug!("Server: Closed");
+          }
+
+          pub fn add_plugin<T: Wrapper + Clone + 'static>(plugin: T) {
+            let mut guard = DUPLEX.lock().unwrap();
+
+            for net in  (*guard).iter_mut() {
+              net.plugins.add(plugin.clone());
+            }
           }
         }
 
@@ -499,7 +511,7 @@ macro_rules! service {
         }
 
         pub fn connect_with_network<T: 'static +  Transport>(network: $crate::Network<T>, serv_addr: &$crate::SocketAddr) -> Client<T> {
-          info!("Client: Listening {}", network.transport.get_addr());
+          debug!("Client: Listening {}", network.transport.get_addr());
 
           Client {
             serv_addr: serv_addr.clone(),
@@ -524,7 +536,7 @@ macro_rules! service {
 
         #[allow(unused)]
         pub fn listen_with_network<T: 'static +  Transport>(net: $crate::Network<T>) -> Server<T> {
-          info!("Server: Listening {}", net.transport.get_addr());
+          debug!("Server: Listening {}", net.transport.get_addr());
           let mut net_c = net.clone();
 
           net_c.handle = None;

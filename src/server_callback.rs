@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use super::proto::Packet;
 
@@ -10,13 +10,11 @@ pub struct ServerCallback {
 
 impl ServerCallback {
   pub fn new(closure: Arc<Fn(Packet, SocketAddr) -> Packet>) -> ServerCallback {
-    ServerCallback {
-      closure,
-    }
+    ServerCallback { closure }
   }
 
   pub fn new_empty() -> ServerCallback {
-    Self::new(Arc::new(|a, _| { a }))
+    Self::new(Arc::new(|a, _| a))
   }
 }
 

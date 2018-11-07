@@ -1,14 +1,14 @@
-use std::sync::{ Arc, Mutex };
 use super::proto::Packet;
 use std::fmt;
+use std::sync::{Arc, Mutex};
 
 pub trait Wrapper: fmt::Debug + Send + Sync {
-  fn on_send(&self, pack: &Packet) -> Packet { pack.clone() }
-  fn on_recv(&self, pack: &Packet) -> Packet { pack.clone() }
-}
-
-lazy_static! {
-  pub static ref PLUGINS: super::Mutexed<Plugins> = super::Mutexed::new(super::Plugins::new());
+  fn on_send(&self, pack: &Packet) -> Packet {
+    pack.clone()
+  }
+  fn on_recv(&self, pack: &Packet) -> Packet {
+    pack.clone()
+  }
 }
 
 #[derive(Clone)]
@@ -23,16 +23,7 @@ impl Plugins {
     }
   }
 
-  pub fn add<T: Wrapper + 'static>(wrapper: T) {
-    let mut plugs = PLUGINS.get();
-
-    info!("({}) Adding plugin {:?}", plugs.wrappers.lock().unwrap().len() + 1, wrapper);
-
-    plugs.add_(wrapper);
-  }
-
-  fn add_<T: Wrapper + 'static>(&mut self, wrapper: T) {
-
+  pub fn add<T: Wrapper + 'static>(&mut self, wrapper: T) {
     let mut guard = self.wrappers.lock().unwrap();
 
     (*guard).push(Box::new(wrapper));
@@ -70,4 +61,3 @@ impl Plugins {
     data
   }
 }
-

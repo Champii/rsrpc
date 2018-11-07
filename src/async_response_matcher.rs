@@ -1,5 +1,8 @@
-use std::collections::HashMap;
 use futures::channel::oneshot;
+use std::collections::HashMap;
+use std::time::Duration;
+
+use super::timer::Timer;
 
 pub struct AsyncResponseMatcher {
   waiting: HashMap<String, oneshot::Sender<Vec<u8>>>,
@@ -25,6 +28,12 @@ impl AsyncResponseMatcher {
       Some(tx) => tx.send(data).unwrap(),
       None => trace!("Cannot find such answer ! {}", hash),
     };
+  }
+
+  pub fn remove(matcher: &mut AsyncResponseMatcher, hash: String) {
+    trace!("Remove waiting {}", hash);
+
+    matcher.waiting.remove(&hash).unwrap();
   }
 
   pub fn close(&mut self) {

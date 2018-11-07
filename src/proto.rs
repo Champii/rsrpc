@@ -1,7 +1,8 @@
-use sha2::{ Sha256, Digest };
 use bincode::serialize;
 use hex::encode;
+use sha2::{Digest, Sha256};
 use std::net::SocketAddr;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize, Deserialize, Debug, Hash, Clone)]
 pub struct PacketHeader {
@@ -15,7 +16,10 @@ impl PacketHeader {
   pub fn new(sender: SocketAddr, response_to: String) -> PacketHeader {
     PacketHeader {
       sender,
-      date: 0,
+      date: SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_micros() as u64,
       msg_hash: String::from(""),
       response_to,
     }

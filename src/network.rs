@@ -1,9 +1,12 @@
 use std::thread;
+use std::time::Duration;
 use std::net::{ SocketAddr };
 use bincode::{ serialize };
 use std::sync::{ Arc };
 use std::io::{ ErrorKind };
+use futures::select;
 
+use super::timer::Timer;
 use super::proto::Packet;
 use super::transport::*;
 use super::plugins::*;
@@ -19,6 +22,7 @@ lazy_static! {
 #[derive(Clone)]
 pub struct Network<T: Transport + Clone> {
   pub transport: T,
+  pub plugins: Plugins,
   pub callback: Mutexed<ServerCallback>,
   pub handle: Option<Arc<thread::JoinHandle<()>>>,
 }
@@ -33,6 +37,7 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
   pub fn new(transport: T, callback: ServerCallback) -> Network<T> {
     Network {
       transport: transport,
+      plugins: Plugins::new(),
       callback: Mutexed::new(callback),
       handle: None,
     }
@@ -62,15 +67,17 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
         Ok((buff, from)) => {
           let mut pack: Packet = super::deserialize(&buff).unwrap();
 
-          pack = PLUGINS.get().run_on_recv(pack.clone());
+          let mut plugins = net.plugins.clone();
+
+          pack = plugins.run_on_recv(pack.clone());
 
           let pack_c = pack.clone();
 
-          thread::spawn(move || {
+          {
             let mut guard = MATCHER.lock().unwrap();
 
             AsyncResponseMatcher::resolve(&mut *guard, pack.header.response_to.clone(), pack.data.clone());
-          });
+          }
 
           (net.callback.get().closure)(pack_c, from);
         },
@@ -90,8 +97,10 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
     self.callback.set(callback);
   }
 
-  pub fn send(&mut self, addr: &SocketAddr, buff: Vec<u8>) -> Vec<u8> {
-    let (tx1, rx1) = channel::<Vec<u8>>();
+  pub fn send(&mut self, addr: &SocketAddr, buff: Vec<u8>) -> Result<Vec<u8>, String> {
+    let (tx1, mut rx1) = channel::<Vec<u8>>();
+
+    let mut err_rx = Timer::new(Duration::from_secs(1), "Timeout".to_string());
 
     let pack = Packet::new(buff, self.transport.get_addr(), String::new());
 
@@ -101,7 +110,9 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
 
     let addr_c = addr.clone();
 
-    thread::spawn(move || {
+    let mut plugins = self.plugins.clone();
+
+    {
       let addr_c = addr_c.clone();
 
       let mut guard = MATCHER.lock().unwrap();
@@ -110,29 +121,51 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
 
       matcher.add(pack_c.header.msg_hash.clone(), tx1);
 
-      pack_c = PLUGINS.get().run_on_send(pack_c.clone());
+      pack_c = plugins.run_on_send(pack_c.clone());
 
       let buf = serialize(&pack_c).unwrap();
 
       transport.send(&addr_c, buf);
-    });
+    }
 
-    let mut res = Vec::new();
+    let mut res_vec = Ok(Vec::new());
 
     super::block_on(async {
-      match await!(rx1) {
-        Ok(r) => res = r,
-        _ => warn!("Canceled call"),
+      select! {
+        rx1 => {
+          match rx1 {
+            Ok(r) => res_vec = Ok(r),
+            _ => warn!("Canceled call"),
+          };
+        },
+        err_rx => {
+          match err_rx {
+            Ok(err) => {
+              error!("Error sending to {} : {}", addr, err);
+
+              {
+                let mut guard = MATCHER.lock().unwrap();
+
+                let matcher = &mut *guard;
+
+                AsyncResponseMatcher::remove(matcher, pack_c.header.msg_hash.clone());
+              }
+
+              res_vec = Err(err);
+            },
+            _ => warn!("Canceled error callback"),
+          };
+        },
       };
     });
 
-    res
+    res_vec
   }
 
   pub fn send_answer(net: &mut Network<T>, addr: &SocketAddr, buff: Vec<u8>, response_to: String) {
     let mut pack = Packet::new(buff, net.transport.get_addr(), response_to);
 
-    pack = PLUGINS.get().run_on_send(pack.clone());
+    pack = net.plugins.run_on_send(pack.clone());
 
     let buf = serialize(&pack).unwrap();
 

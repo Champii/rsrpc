@@ -1,4 +1,3 @@
-
 mod tests {
   #[allow(unused_imports)]
   use std::net::SocketAddr;
@@ -23,41 +22,29 @@ mod tests {
 
   #[test]
   fn simple_test() {
-
     let mut server = Foo::listen("127.0.0.1:3000");
     let mut client = Foo::connect("127.0.0.1:0", "127.0.0.1:3000");
 
-    assert_eq!(client.hello("test".to_string()), "hello test".to_string());
-    assert_eq!(client.eq(42, 43), false);
+    assert_eq!(
+      client.hello("test".to_string()),
+      Ok(Ok("hello test".to_string()))
+    );
+    assert_eq!(client.eq(42, 43), Ok(Ok(false)));
 
     client.close();
     server.close();
   }
-
-  // #[test]
-  // fn interceptor() {
-  //   let mut server = Foo::listen("127.0.0.1:3001");
-  //   let mut client = Foo::connect("127.0.0.1:3001");
-
-  //   server.set_interceptor(Arc::new(|pack| {
-  //     // todo
-  //     pack
-  //   }));
-
-  //   assert_eq!(client.eq(42, 43), false);
-  //   assert_eq!(client.hello("test".to_string()), "hello test".to_string());
-
-  //   client.close();
-  //   server.close();
-  // }
 
   #[test]
   fn explicit_transport_type() {
     let mut server = Foo::listen_with::<Foo::UdpTransport>("127.0.0.1:3002");
     let mut client = Foo::connect_with::<Foo::UdpTransport>("127.0.0.1:0", "127.0.0.1:3002");
 
-    assert_eq!(client.eq(42, 42), true);
-    assert_eq!(client.hello("test2".to_string()), "hello test2".to_string());
+    assert_eq!(client.eq(42, 42), Ok(Ok(true)));
+    assert_eq!(
+      client.hello("test2".to_string()),
+      Ok(Ok("hello test2".to_string()))
+    );
 
     client.close();
     server.close();
@@ -65,8 +52,10 @@ mod tests {
 
   #[test]
   fn explicit_provided_network() {
-    let mut net1 = Network::<Foo::UdpTransport>::new_default(&super::super::to_socket_addr("127.0.0.1:3003"));
-    let mut net2 = Network::<Foo::UdpTransport>::new_default(&super::super::to_socket_addr("127.0.0.1:3004"));
+    let mut net1 =
+      Network::<Foo::UdpTransport>::new_default(&super::super::to_socket_addr("127.0.0.1:3003"));
+    let mut net2 =
+      Network::<Foo::UdpTransport>::new_default(&super::super::to_socket_addr("127.0.0.1:3004"));
 
     net1.listen();
     net2.listen();
@@ -76,8 +65,11 @@ mod tests {
     let mut server = Foo::listen_with_network(net1);
     let mut client = Foo::connect_with_network(net2, &addr);
 
-    assert_eq!(client.eq(42, 43), false);
-    assert_eq!(client.hello("test3".to_string()), "hello test3".to_string());
+    assert_eq!(client.eq(42, 43), Ok(Ok(false)));
+    assert_eq!(
+      client.hello("test3".to_string()),
+      Ok(Ok("hello test3".to_string()))
+    );
 
     client.close();
     server.close();
@@ -121,33 +113,38 @@ mod multi_service {
     let mut server = Foo::listen("127.0.0.1:3010");
     let mut client = Foo::connect("127.0.0.1:0", "127.0.0.1:3010");
 
-    assert_eq!(client.hello("test4".to_string()), "hello test4".to_string());
-    assert_eq!(client.eq(42, 43), false);
+    assert_eq!(
+      client.hello("test4".to_string()),
+      Ok(Ok("hello test4".to_string()))
+    );
+    assert_eq!(client.eq(42, 43), Ok(Ok(false)));
 
     client.close();
     server.close();
- }
+  }
 
   #[test]
   fn simple_test_bar() {
     let mut server = Bar::listen("127.0.0.1:3011");
     let mut client = Bar::connect("127.0.0.1:0", "127.0.0.1:3011");
 
-    assert_eq!(client.hello2("test5".to_string()), "hello 2 test5".to_string());
-    assert_eq!(client.neq2(42, 43), true);
+    assert_eq!(
+      client.hello2("test5".to_string()),
+      Ok(Ok("hello 2 test5".to_string()))
+    );
+    assert_eq!(client.neq2(42, 43), Ok(Ok(true)));
 
     client.close();
     server.close();
   }
 }
 
-
 mod context {
   #[allow(unused_imports)]
   use std::net::SocketAddr;
 
   #[allow(unused_imports)]
-  use std::sync::{ Arc, Mutex };
+  use std::sync::{Arc, Mutex};
 
   #[allow(unused_imports)]
   use super::super::network::Network;
@@ -171,9 +168,9 @@ mod context {
     let mut server = Foo::listen("127.0.0.1:3020");
     let mut client = Foo::connect("127.0.0.1:0", "127.0.0.1:3020");
 
-    assert_eq!(client.inc(1), 1);
-    assert_eq!(client.inc(2), 3);
-    assert_eq!(client.inc(3), 6);
+    assert_eq!(client.inc(1), Ok(Ok(1)));
+    assert_eq!(client.inc(2), Ok(Ok(3)));
+    assert_eq!(client.inc(3), Ok(Ok(6)));
 
     client.close();
     server.close();
@@ -182,9 +179,9 @@ mod context {
 
 mod duplex {
   #[allow(unused_imports)]
-  use std::net::SocketAddr;
-  #[allow(unused_imports)]
   use super::super::network::Network;
+  #[allow(unused_imports)]
+  use std::net::SocketAddr;
 
   service! {
     Foo {
@@ -201,7 +198,10 @@ mod duplex {
     let server = Foo::Duplex::listen("127.0.0.1:3030");
     let mut client = Foo::Duplex::connect("127.0.0.1:3030");
 
-    assert_eq!(client.hello("test".to_string()), "hello test".to_string());
+    assert_eq!(
+      client.hello("test".to_string()),
+      Ok(Ok("hello test".to_string()))
+    );
 
     drop(server);
     drop(client);
