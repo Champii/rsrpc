@@ -257,12 +257,12 @@ macro_rules! service {
       )*
     }
   ) => {
-    pub use $crate::transport::{ Transport, UdpTransport };
+    pub use $crate::{ Transport, UdpTransport };
 
     $(
       #[allow(non_snake_case)]
       pub mod $service_name {
-        pub use $crate::transport::{ Transport, UdpTransport };
+        pub use $crate::{ Transport, UdpTransport, TcpTransport };
         use $crate::utils::{to_socket_addr};
         use std::sync::{ Arc, Mutex };
         use std::net::SocketAddr;
@@ -438,9 +438,12 @@ macro_rules! service {
 
           #[allow(unused)]
           pub fn connect(addr: &str) -> Client<UdpTransport> {
-            let net = DUPLEX.lock().unwrap().as_ref().unwrap().clone();
+            let mut net = DUPLEX.lock().unwrap().as_ref().unwrap().clone();
 
-            connect_with_network(net, &addr.parse::<$crate::SocketAddr>().unwrap())
+            net.connect().unwrap();
+
+
+            connect_with_network(net)
           }
 
           #[allow(unused)]
@@ -499,35 +502,46 @@ macro_rules! service {
         }
 
         #[allow(unused)]
-        pub fn connect(addr: &str, serv_addr: &str) -> Client<UdpTransport> {
-          connect_with::<UdpTransport>(addr, serv_addr)
+        pub fn connect_udp(serv_addr: &str) -> Result<Client<UdpTransport>, String> {
+          connect_with::<UdpTransport>(serv_addr)
         }
 
-        pub fn connect_with<T: 'static +  Transport>(addr: &str, serv_addr: &str) -> Client<T> {
-          let mut network = $crate::Network::new_default(&to_socket_addr(addr));
-
-          network.listen();
-
-          connect_with_network(network, &to_socket_addr(serv_addr))
+        #[allow(unused)]
+        pub fn connect_tcp(serv_addr: &str) -> Result<Client<TcpTransport>, String> {
+          connect_with::<TcpTransport>(serv_addr)
         }
 
-        pub fn connect_with_network<T: 'static +  Transport>(network: $crate::Network<T>, serv_addr: &$crate::SocketAddr) -> Client<T> {
-          debug!("Client: Listening {}", network.transport.get_addr());
+        pub fn connect_with<T: 'static +  Transport>(serv_addr: &str) -> Result<Client<T>, String> {
+          let mut network = $crate::Network::new_default(&to_socket_addr(serv_addr));
+
+          if let Err(e) = network.connect() {
+            return Err(e);
+          }
+
+          Ok(connect_with_network(network))
+        }
+
+        pub fn connect_with_network<T: 'static +  Transport>(network: $crate::Network<T>) -> Client<T> {
+          debug!("Client: Connected {}", network.transport.get_addr());
 
           Client {
-            serv_addr: serv_addr.clone(),
+            serv_addr: network.transport.get_addr(),
             network,
           }
         }
 
         #[allow(unused)]
-        pub fn listen(addr: &str) -> Server<$crate::UdpTransport> {
+        pub fn listen_udp(addr: &str) -> Server<$crate::UdpTransport> {
           listen_with::<UdpTransport>(addr)
         }
 
         #[allow(unused)]
-        pub fn listen_with<T: 'static +  Transport>(addr: &str) -> Server<T> {
+        pub fn listen_tcp(addr: &str) -> Server<$crate::TcpTransport> {
+          listen_with::<TcpTransport>(addr)
+        }
 
+        #[allow(unused)]
+        pub fn listen_with<T: 'static +  Transport>(addr: &str) -> Server<T> {
           let mut network = $crate::Network::new_default(&to_socket_addr(addr));
 
           network.listen();
@@ -548,7 +562,6 @@ macro_rules! service {
 
           server.network.set_callback($crate::ServerCallback {
             closure: Arc::new(move |pack, from| {
-
               if pack.header.response_to.len() == 0 {
 
                 let mut net = net_c.clone();

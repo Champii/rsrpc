@@ -1,9 +1,8 @@
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::net::{ SocketAddr };
 use bincode::{ serialize };
 use std::sync::{ Arc };
-use std::io::{ ErrorKind };
 use futures::select;
 
 use super::timer::Timer;
@@ -57,17 +56,68 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
     self
   }
 
+  pub fn connect(&mut self) -> Result<&mut Network<T>, String> {
+    let res = self.transport.connect();
+
+    if let Err(e) = res {
+      return Err(e);
+    }
+
+    let net = self.clone();
+
+    trace!("Starting async read loop");
+
+    self.handle = Some(Arc::new(thread::spawn(|| {
+      Self::run_read_thread(net);
+    })));
+
+    Ok(self)
+  }
+
   fn run_read_thread(net: Network<T>) {
     let mut t = net.transport.clone();
     let net = net.clone();
 
 
-    loop {
-      match t.recv() {
+    // loop {
+    //   match t.recv() {
+    //     Ok((buff, from)) => {
+    //       let mut pack: Packet = super::deserialize(&buff).unwrap();
+
+    //       let mut plugins = net.plugins.clone();
+
+    //       pack = plugins.run_on_recv(pack.clone());
+
+    //       let pack_c = pack.clone();
+
+    //       {
+    //         let mut guard = MATCHER.lock().unwrap();
+
+    //         AsyncResponseMatcher::resolve(&mut *guard, pack.header.response_to.clone(), pack.data.clone());
+    //       }
+
+    //       (net.callback.get().closure)(pack_c, from);
+    //     },
+    //     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => (),
+    //     Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => break,
+    //     Err(e) => {
+    //       if e.kind() != ErrorKind::Other {
+    //         println!("OUAT {}", e);
+    //         error!("Error read {}", e);
+    //       }
+
+    //       break;
+    //     }
+    //   };
+    // }
+    let recv = t.get_recv();
+
+    loop { 
+      match recv.lock().unwrap().recv_deadline(Instant::now() + Duration::from_millis(1)) {
         Ok((buff, from)) => {
           let mut pack: Packet = super::deserialize(&buff).unwrap();
 
-          let mut plugins = net.plugins.clone();
+          let mut plugins = net.plugins.clone(); 
 
           pack = plugins.run_on_recv(pack.clone());
 
@@ -81,13 +131,19 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
 
           (net.callback.get().closure)(pack_c, from);
         },
-        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => (),
-        Err(e) => {
-          if e.kind() != ErrorKind::Other {
-            error!("Error read {}", e);
+        // Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => (),
+        // Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => break,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+          if !t.is_running() {
+            break;
           }
 
-          break;
+          // thread::sleep(Duration::from_millis(10));
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+          if !t.is_running() {
+            break;
+          }
         }
       };
     }

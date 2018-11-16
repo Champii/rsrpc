@@ -4,7 +4,8 @@
     pin,
     arbitrary_self_types,
     futures_api,
-    duration_as_u128
+    duration_as_u128,
+    deadline_api
 )]
 #![recursion_limit = "128"]
 #[macro_use]
@@ -16,7 +17,6 @@ extern crate log;
 
 pub extern crate bincode;
 pub extern crate byteorder;
-extern crate env_logger;
 extern crate futures;
 extern crate hex;
 extern crate pin_utils;

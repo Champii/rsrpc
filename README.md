@@ -8,8 +8,7 @@ Largely inspired by Tarpc and Bifrost
 
 Under development and currently not stable.
 
-Basic synchronous RPC system in UDP by default, but with multiple transport solutions.
-
+Basic synchronous RPC system with TCP and UDP support.
 ## Index
 
 * [Usage](#usage)
@@ -22,7 +21,7 @@ Basic synchronous RPC system in UDP by default, but with multiple transport solu
 
 ## Usage
 
-By default RSRPC uses UDP as transport system. See [Transport](#transport)
+[Transport](#transport)
 
 ```rust
 service! {
@@ -42,10 +41,10 @@ service! {
 
 fn main() {
   // The server listening
-  let mut server = Foo::listen("127.0.0.1:3000");
+  let mut server = Foo::listen_tcp("127.0.0.1:3000");
 
   // The client listening to :3001 and connecting to :3000
-  let mut client = Foo::connect("127.0.0.1:3001", "127.0.0.1:3000");
+  let mut client = Foo::connect_tcp("127.0.0.1:3001", "127.0.0.1:3000").unwrap();
 
 
   // returns "hello world"
@@ -73,8 +72,6 @@ You can chose the Transport to connect with :
   let client = Foo::connect_with::<UdpTransport>("127.0.0.1:3001", "127.0.0.1:3000");
 ```
 
-Actualy only UdpTransport is implemented but a TcpTransport is in the pipe.
-
 ## Network
 
 You can chose the Network to connect with :
@@ -98,7 +95,7 @@ You can chose the Network to connect with :
 
 This may be usefull to have some servers or clients to share the same binded socket.
 
-See the [Duplex](#duplex) section to see a more conveignant way to make a server and a client to share the same socket.
+See the [Duplex](#duplex) section to see a more conveignant way to make a server and a client to share the same socket. (UDP only)
 
 ## Multi-Services
 
@@ -131,7 +128,7 @@ If you want to have a single binded socket (Probably to connect server to server
   let server = Foo::Duplex::listen("127.0.0.1:3000");
 
   // Connect to another server through the same socket
-  let mut client = Foo::Duplex::connect("127.0.0.1:7777");
+  let mut client = Foo::Duplex::connect("127.0.0.1:7777").unwrap();
 
   // You must destroy every reference to the shared network before closing or waiting
   drop(server);
@@ -168,7 +165,7 @@ service! {
 
 fn main() {
   // The context is accessible through the `Server` object
-  let server = Foo::listen("127.0.0.1:3000");
+  let server = Foo::listen_tcp("127.0.0.1:3000");
 
   // This context is an `Arc<Mutex<T>>`
   println!("Say hello: {}", server.context.lock().unwrap().hello);

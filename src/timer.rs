@@ -12,7 +12,10 @@ impl Timer {
     thread::spawn(move || {
       thread::sleep(wait_time);
 
-      tx.send(err).unwrap();
+      match tx.send(err) {
+        Ok(_) => (),
+        Err(_) => (),
+      };
     });
 
     rx

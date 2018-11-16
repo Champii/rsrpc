@@ -21,9 +21,24 @@ mod tests {
   }
 
   #[test]
-  fn simple_test() {
-    let mut server = Foo::listen("127.0.0.1:3000");
-    let mut client = Foo::connect("127.0.0.1:0", "127.0.0.1:3000");
+  fn simple_test_udp() {
+    let mut server = Foo::listen_udp("127.0.0.1:3000");
+    let mut client = Foo::connect_udp("127.0.0.1:3000").unwrap();
+
+    assert_eq!(
+      client.hello("test".to_string()),
+      Ok(Ok("hello test".to_string()))
+    );
+    assert_eq!(client.eq(42, 43), Ok(Ok(false)));
+
+    client.close();
+    server.close();
+  }
+
+  #[test]
+  fn simple_test_tcp() {
+    let mut server = Foo::listen_tcp("127.0.0.1:3000");
+    let mut client = Foo::connect_tcp("127.0.0.1:3000").unwrap();
 
     assert_eq!(
       client.hello("test".to_string()),
@@ -37,8 +52,23 @@ mod tests {
 
   #[test]
   fn explicit_transport_type() {
-    let mut server = Foo::listen_with::<Foo::UdpTransport>("127.0.0.1:3002");
-    let mut client = Foo::connect_with::<Foo::UdpTransport>("127.0.0.1:0", "127.0.0.1:3002");
+    let mut server = Foo::listen_with::<Foo::UdpTransport>("127.0.0.1:3001");
+    let mut client = Foo::connect_with::<Foo::UdpTransport>("127.0.0.1:3001").unwrap();
+
+    assert_eq!(client.eq(42, 42), Ok(Ok(true)));
+    assert_eq!(
+      client.hello("test2".to_string()),
+      Ok(Ok("hello test2".to_string()))
+    );
+
+    client.close();
+    server.close();
+  }
+
+  #[test]
+  fn explicit_tcp_transport_type() {
+    let mut server = Foo::listen_with::<Foo::TcpTransport>("127.0.0.1:3002");
+    let mut client = Foo::connect_with::<Foo::TcpTransport>("127.0.0.1:3002").unwrap();
 
     assert_eq!(client.eq(42, 42), Ok(Ok(true)));
     assert_eq!(
@@ -55,15 +85,36 @@ mod tests {
     let mut net1 =
       Network::<Foo::UdpTransport>::new_default(&super::super::to_socket_addr("127.0.0.1:3003"));
     let mut net2 =
-      Network::<Foo::UdpTransport>::new_default(&super::super::to_socket_addr("127.0.0.1:3004"));
+      Network::<Foo::UdpTransport>::new_default(&super::super::to_socket_addr("127.0.0.1:3003"));
 
     net1.listen();
-    net2.listen();
-
-    let addr = net1.transport.get_addr();
+    net2.connect().unwrap();
 
     let mut server = Foo::listen_with_network(net1);
-    let mut client = Foo::connect_with_network(net2, &addr);
+    let mut client = Foo::connect_with_network(net2);
+
+    assert_eq!(client.eq(42, 43), Ok(Ok(false)));
+    assert_eq!(
+      client.hello("test3".to_string()),
+      Ok(Ok("hello test3".to_string()))
+    );
+
+    client.close();
+    server.close();
+  }
+
+  #[test]
+  fn explicit_provided_tcp_network() {
+    let mut net1 =
+      Network::<Foo::TcpTransport>::new_default(&super::super::to_socket_addr("127.0.0.1:3004"));
+    let mut net2 =
+      Network::<Foo::TcpTransport>::new_default(&super::super::to_socket_addr("127.0.0.1:3004"));
+
+    net1.listen();
+    net2.connect().unwrap();
+
+    let mut server = Foo::listen_with_network(net1);
+    let mut client = Foo::connect_with_network(net2);
 
     assert_eq!(client.eq(42, 43), Ok(Ok(false)));
     assert_eq!(
@@ -110,8 +161,8 @@ mod multi_service {
 
   #[test]
   fn simple_test_foo() {
-    let mut server = Foo::listen("127.0.0.1:3010");
-    let mut client = Foo::connect("127.0.0.1:0", "127.0.0.1:3010");
+    let mut server = Foo::listen_udp("127.0.0.1:3010");
+    let mut client = Foo::connect_udp("127.0.0.1:3010").unwrap();
 
     assert_eq!(
       client.hello("test4".to_string()),
@@ -125,8 +176,8 @@ mod multi_service {
 
   #[test]
   fn simple_test_bar() {
-    let mut server = Bar::listen("127.0.0.1:3011");
-    let mut client = Bar::connect("127.0.0.1:0", "127.0.0.1:3011");
+    let mut server = Bar::listen_tcp("127.0.0.1:3011");
+    let mut client = Bar::connect_tcp("127.0.0.1:3011").unwrap();
 
     assert_eq!(
       client.hello2("test5".to_string()),
@@ -164,9 +215,22 @@ mod context {
   }
 
   #[test]
-  fn test() {
-    let mut server = Foo::listen("127.0.0.1:3020");
-    let mut client = Foo::connect("127.0.0.1:0", "127.0.0.1:3020");
+  fn test_udp() {
+    let mut server = Foo::listen_udp("127.0.0.1:3020");
+    let mut client = Foo::connect_udp("127.0.0.1:3020").unwrap();
+
+    assert_eq!(client.inc(1), Ok(Ok(1)));
+    assert_eq!(client.inc(2), Ok(Ok(3)));
+    assert_eq!(client.inc(3), Ok(Ok(6)));
+
+    client.close();
+    server.close();
+  }
+
+  #[test]
+  fn test_tcp() {
+    let mut server = Foo::listen_tcp("127.0.0.1:3020");
+    let mut client = Foo::connect_tcp("127.0.0.1:3020").unwrap();
 
     assert_eq!(client.inc(1), Ok(Ok(1)));
     assert_eq!(client.inc(2), Ok(Ok(3)));
@@ -193,8 +257,6 @@ mod duplex {
 
   #[test]
   fn test_duplex() {
-    env_logger::init();
-
     let server = Foo::Duplex::listen("127.0.0.1:3030");
     let mut client = Foo::Duplex::connect("127.0.0.1:3030");
 
