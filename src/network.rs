@@ -162,9 +162,8 @@ impl<T: 'static + Transport + Clone + Send + Sync> Network<T> {
     self.callback.set(callback);
   }
 
-  pub async fn toto(rx1: Receiver<Vec<u8>>, pack_c: Packet) -> Result<Vec<u8>, String> {
+  pub async fn wait_for(rx1: Receiver<Vec<u8>>, pack_c: Packet) -> Result<Vec<u8>, String> {
     let err_rx = Timer::new(Duration::from_secs(1), "Timeout".to_string());
-    // let mut res_vec = Ok(vec![]);
 
     select! {
       res1 = rx1.fuse() => {
@@ -192,14 +191,10 @@ impl<T: 'static + Transport + Clone + Send + Sync> Network<T> {
         }
       },
     }
-
-    // res_vec
   }
 
   pub fn send(&mut self, addr: &SocketAddr, buff: Vec<u8>) -> Result<Vec<u8>, String> {
     let (tx1, mut rx1) = channel::<Vec<u8>>();
-
-    // let mut err_rx = Timer::new(Duration::from_secs(1), "Timeout".to_string());
 
     let pack = Packet::new(buff, self.transport.get_addr(), String::new());
 
@@ -227,38 +222,7 @@ impl<T: 'static + Transport + Clone + Send + Sync> Network<T> {
       transport.send(&addr_c, buf);
     }
 
-    // let mut res_vec = Ok(Vec::new());
-
-    futures::executor::block_on(
-      Self::toto(rx1, pack_c), // select! {
-                               // rx1 = rx1 => {
-                               //     match rx1 {
-                               //       Ok(r) => res_vec = Ok(r),
-                               //       _ => warn!("Canceled call"),
-                               //     };
-                               //   },
-                               //   err_rx = err_rx => {
-                               //     match err_rx {
-                               //       Ok(err) => {
-                               //         error!("Error sending to {} : {}", addr, err);
-
-                               //         {
-                               //           let mut guard = MATCHER.lock().unwrap();
-
-                               //           let matcher = &mut *guard;
-
-                               //           AsyncResponseMatcher::remove(matcher, pack_c.header.msg_hash.clone());
-                               //         }
-
-                               //         res_vec = Err(err);
-                               //       },
-                               //       _ => warn!("Canceled error callback"),
-                               //     };
-                               //   },
-                               // };
-    )
-
-    // res_vec
+    futures::executor::block_on(Self::wait_for(rx1, pack_c))
   }
 
   pub fn send_answer(net: &mut Network<T>, addr: &SocketAddr, buff: Vec<u8>, response_to: String) {
