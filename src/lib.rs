@@ -1,9 +1,9 @@
 #![feature(
     async_await,
-    await_macro,
     pin,
     arbitrary_self_types,
     futures_api,
+    async_closure,
     duration_as_u128,
     deadline_api
 )]
@@ -14,16 +14,17 @@ extern crate serde_derive;
 pub extern crate lazy_static;
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate futures;
 
 pub extern crate bincode;
 pub extern crate byteorder;
-extern crate futures;
-extern crate hex;
-extern crate pin_utils;
-extern crate serde;
-extern crate serde_bytes;
-extern crate sha2;
-extern crate tokio_core;
+// extern crate hex;
+// extern crate pin_utils;
+// extern crate serde;
+// extern crate serde_bytes;
+// extern crate sha2;
+// extern crate tokio;
 
 #[macro_use]
 pub mod service_macro;

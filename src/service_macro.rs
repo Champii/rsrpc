@@ -421,7 +421,6 @@ macro_rules! service {
           pub static ref DUPLEX: Arc<Mutex<Option<$crate::Network<UdpTransport>>>> = Arc::new(Mutex::new(None));
         }
 
-
         impl Duplex {
           #[allow(unused)]
           pub fn listen(addr: &str) -> Server<UdpTransport> {

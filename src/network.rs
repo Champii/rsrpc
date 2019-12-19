@@ -1,21 +1,23 @@
+use bincode::serialize;
+use futures::future::FutureExt;
+use futures::select;
+use std::net::SocketAddr;
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
-use std::net::{ SocketAddr };
-use bincode::{ serialize };
-use std::sync::{ Arc };
-use futures::select;
 
-use super::timer::Timer;
-use super::proto::Packet;
-use super::transport::*;
-use super::plugins::*;
-use super::utils::*;
 use super::async_response_matcher::AsyncResponseMatcher;
+use super::oneshot::{channel, Receiver};
+use super::plugins::*;
+use super::proto::Packet;
 use super::server_callback::ServerCallback;
-use super::oneshot::channel;
+use super::timer::Timer;
+use super::transport::*;
+use super::utils::*;
 
 lazy_static! {
-  pub static ref MATCHER: super::Mutex<super::AsyncResponseMatcher> = super::Mutex::new(super::AsyncResponseMatcher::new());
+  pub static ref MATCHER: super::Mutex<super::AsyncResponseMatcher> =
+    super::Mutex::new(super::AsyncResponseMatcher::new());
 }
 
 #[derive(Clone)]
@@ -26,7 +28,7 @@ pub struct Network<T: Transport + Clone> {
   pub handle: Option<Arc<thread::JoinHandle<()>>>,
 }
 
-impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
+impl<T: 'static + Transport + Clone + Send + Sync> Network<T> {
   pub fn new_default(addr: &SocketAddr) -> Network<T> {
     let t = T::new(addr);
 
@@ -78,7 +80,6 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
     let mut t = net.transport.clone();
     let net = net.clone();
 
-
     // loop {
     //   match t.recv() {
     //     Ok((buff, from)) => {
@@ -112,12 +113,16 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
     // }
     let recv = t.get_recv();
 
-    loop { 
-      match recv.lock().unwrap().recv_deadline(Instant::now() + Duration::from_millis(1)) {
+    loop {
+      match recv
+        .lock()
+        .unwrap()
+        .recv_deadline(Instant::now() + Duration::from_millis(1))
+      {
         Ok((buff, from)) => {
           let mut pack: Packet = super::deserialize(&buff).unwrap();
 
-          let mut plugins = net.plugins.clone(); 
+          let mut plugins = net.plugins.clone();
 
           pack = plugins.run_on_recv(pack.clone());
 
@@ -126,11 +131,15 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
           {
             let mut guard = MATCHER.lock().unwrap();
 
-            AsyncResponseMatcher::resolve(&mut *guard, pack.header.response_to.clone(), pack.data.clone());
+            AsyncResponseMatcher::resolve(
+              &mut *guard,
+              pack.header.response_to.clone(),
+              pack.data.clone(),
+            );
           }
 
           (net.callback.get().closure)(pack_c, from);
-        },
+        }
         // Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => (),
         // Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => break,
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
@@ -153,10 +162,44 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
     self.callback.set(callback);
   }
 
+  pub async fn toto(rx1: Receiver<Vec<u8>>, pack_c: Packet) -> Result<Vec<u8>, String> {
+    let err_rx = Timer::new(Duration::from_secs(1), "Timeout".to_string());
+    // let mut res_vec = Ok(vec![]);
+
+    select! {
+      res1 = rx1.fuse() => {
+        match res1 {
+          Ok(r) => Ok(r),
+          _ => panic!("Canceled call"),
+        }
+      },
+      res_err_rx = err_rx.fuse() => {
+        match res_err_rx {
+          Ok(err) => {
+            error!("Error sending to {} : {}", "()", err);
+
+            {
+              let mut guard = MATCHER.lock().unwrap();
+
+              let matcher = &mut *guard;
+
+              AsyncResponseMatcher::remove(matcher, pack_c.header.msg_hash.clone());
+            }
+
+            Err(err)
+          },
+          _ => panic!("Canceled error callback"),
+        }
+      },
+    }
+
+    // res_vec
+  }
+
   pub fn send(&mut self, addr: &SocketAddr, buff: Vec<u8>) -> Result<Vec<u8>, String> {
     let (tx1, mut rx1) = channel::<Vec<u8>>();
 
-    let mut err_rx = Timer::new(Duration::from_secs(1), "Timeout".to_string());
+    // let mut err_rx = Timer::new(Duration::from_secs(1), "Timeout".to_string());
 
     let pack = Packet::new(buff, self.transport.get_addr(), String::new());
 
@@ -184,38 +227,38 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
       transport.send(&addr_c, buf);
     }
 
-    let mut res_vec = Ok(Vec::new());
+    // let mut res_vec = Ok(Vec::new());
 
-    super::block_on(async {
-      select! {
-        rx1 => {
-          match rx1 {
-            Ok(r) => res_vec = Ok(r),
-            _ => warn!("Canceled call"),
-          };
-        },
-        err_rx => {
-          match err_rx {
-            Ok(err) => {
-              error!("Error sending to {} : {}", addr, err);
+    futures::executor::block_on(
+      Self::toto(rx1, pack_c), // select! {
+                               // rx1 = rx1 => {
+                               //     match rx1 {
+                               //       Ok(r) => res_vec = Ok(r),
+                               //       _ => warn!("Canceled call"),
+                               //     };
+                               //   },
+                               //   err_rx = err_rx => {
+                               //     match err_rx {
+                               //       Ok(err) => {
+                               //         error!("Error sending to {} : {}", addr, err);
 
-              {
-                let mut guard = MATCHER.lock().unwrap();
+                               //         {
+                               //           let mut guard = MATCHER.lock().unwrap();
 
-                let matcher = &mut *guard;
+                               //           let matcher = &mut *guard;
 
-                AsyncResponseMatcher::remove(matcher, pack_c.header.msg_hash.clone());
-              }
+                               //           AsyncResponseMatcher::remove(matcher, pack_c.header.msg_hash.clone());
+                               //         }
 
-              res_vec = Err(err);
-            },
-            _ => warn!("Canceled error callback"),
-          };
-        },
-      };
-    });
+                               //         res_vec = Err(err);
+                               //       },
+                               //       _ => warn!("Canceled error callback"),
+                               //     };
+                               //   },
+                               // };
+    )
 
-    res_vec
+    // res_vec
   }
 
   pub fn send_answer(net: &mut Network<T>, addr: &SocketAddr, buff: Vec<u8>, response_to: String) {
@@ -232,7 +275,10 @@ impl<T: 'static +  Transport + Clone + Send + Sync> Network<T> {
     if let Some(handle) = self.handle.take() {
       match Arc::try_unwrap(handle) {
         Ok(h) => h.join().unwrap(),
-        Err(a) => warn!("Not waiting: multiple references ({}) to network stay.", Arc::strong_count(&a)),
+        Err(a) => warn!(
+          "Not waiting: multiple references ({}) to network stay.",
+          Arc::strong_count(&a)
+        ),
       };
     }
   }
